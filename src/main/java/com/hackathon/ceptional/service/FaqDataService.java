@@ -119,9 +119,12 @@ public class FaqDataService {
                     cell = row.getCell(3);
                     if (cell != null && cell.getCellType() != CellType.BLANK) {
                         String answer = cell.toString();
-                        if (!answers.contains(answer) && StringUtils.isNotBlank(answer)) {
+                        if (!answers.contains(faq) && StringUtils.isNotBlank(answer)) {
                             // valid answer, now add answers list and faqMap
-                            answers.add(answer);
+                            /**
+                             * hackathon special requirement, set faq as answer now.
+                             */
+                            answers.add(faq);
                             int key = answers.size() - 1;
                             if (faqMap.containsKey(key)) {
                                 List<String> value = faqMap.get(key);

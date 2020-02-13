@@ -18,9 +18,9 @@ import java.util.List;
 @Getter
 public class CcsResponse<T> {
 
-    private int responseCode;
+    private int response_code;
 
-    private String responseMessage;
+    private String response_message;
 
     private List<T> results = new ArrayList<>();
 
@@ -55,14 +55,14 @@ public class CcsResponse<T> {
      * @param data data
      */
     private CcsResponse(T data) {
-        this.responseCode = 200;
-        this.responseMessage = "success";
+        this.response_code = 200;
+        this.response_message = "success";
         this.results.add(data);
     }
 
     public CcsResponse(int code, String msg) {
-        this.responseCode = code;
-        this.responseMessage = msg;
+        this.response_code = code;
+        this.response_message = msg;
     }
 
     /**
@@ -72,16 +72,16 @@ public class CcsResponse<T> {
      */
     private CcsResponse(RespMessage codeMsg) {
         if (codeMsg != null) {
-            this.responseCode = codeMsg.getCode();
-            this.responseMessage = codeMsg.getMsg();
+            this.response_code = codeMsg.getCode();
+            this.response_message = codeMsg.getMsg();
         }
     }
 
     @Override
     public String toString() {
         return "Result{" +
-                "responseCode=" + responseCode +
-                ", responseMessage='" + responseMessage + '\'' +
+                "responseCode=" + response_code +
+                ", responseMessage='" + response_message + '\'' +
                 ", results=" + results +
                 '}';
     }

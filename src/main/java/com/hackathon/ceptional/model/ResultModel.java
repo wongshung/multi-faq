@@ -16,8 +16,9 @@ import java.util.List;
 @Getter
 public class ResultModel {
 
-    private double answerScore;
+    private double answer_score;
     private int status;
+    private int type = 1;
     List<Answer> answer;
 
     /**

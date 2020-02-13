@@ -86,7 +86,7 @@ public class FaqMatchService {
         result.setStatus(0);
         BigDecimal b = new BigDecimal(highestScore);
         highestScore = b.setScale(4, BigDecimal.ROUND_HALF_UP).doubleValue();
-        result.setAnswerScore(highestScore * 100);
+        result.setAnswer_score(highestScore * 100);
         log.info("match score: {}", highestScore);
 
         if (highestScore >= Constants.FAQ_THRESHOLD) {
