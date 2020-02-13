@@ -17,8 +17,8 @@ class SimilarityTest {
 
     @Test
     void testSim() {
-        String text1 = "昨晚上买当天白天的汽车票，怎么会购买成功，还扣钱二次，，38元39元各一次成功了？？？";
-        String text2 = "昨晚上买当天白天的汽车票，怎么会购买成功，还扣钱二次，，38元39元各一次成功了？？？";
+        String text1 = "联系客服";
+        String text2 = "如何联系人工";
         /**
          * jaro, edit distance, damerau, jacCard, metricLcs, nGram
          */

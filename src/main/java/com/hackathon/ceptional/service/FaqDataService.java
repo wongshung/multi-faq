@@ -1,5 +1,6 @@
 package com.hackathon.ceptional.service;
 
+import com.hackathon.ceptional.config.Constants;
 import com.hackathon.ceptional.util.ExcelUtil;
 import com.hackathon.ceptional.util.SimilarityUtil;
 import com.qianxinyao.analysis.jieba.keyword.Keyword;
@@ -49,7 +50,10 @@ public class FaqDataService {
 
     private static final int SHEET_COUNT = 2;
 
-    private ConcurrentHashMap<Integer, Double> resultMap = new ConcurrentHashMap<>();
+    /**
+     * fixed key map in regarding to thread count
+     */
+    private ConcurrentHashMap<Integer, HashSet<Integer> > keyMap = new ConcurrentHashMap<>(Constants.THREAD_COUNT);
 
     private TFIDFAnalyzer tfidfAnalyzer = new TFIDFAnalyzer();
     private static final int TOP_N = 5;
@@ -82,7 +86,23 @@ public class FaqDataService {
         // set keyWord Map
         setKeyWordMap();
 
+        // init keyMap
+        initKeyMap();
+
         log.info("initData done");
+    }
+
+    private void initKeyMap() {
+        for (int i = 0; i < Constants.THREAD_COUNT; i++) {
+            HashSet<Integer> keySet = new HashSet<>();
+            for (int j = 0; j < answers.size(); j++) {
+                int hash = j % Constants.THREAD_COUNT;
+                if (hash == i) {
+                    keySet.add(j);
+                }
+            }
+            keyMap.put(i, keySet);
+        }
     }
 
     private void setKeyWordMap() {
@@ -120,9 +140,9 @@ public class FaqDataService {
                     if (cell != null && cell.getCellType() != CellType.BLANK) {
                         String answer = cell.toString();
                         if (!answers.contains(faq) && StringUtils.isNotBlank(answer)) {
-                            // valid answer, now add answers list and faqMap
-                            /**
+                            /*
                              * hackathon special requirement, set faq as answer now.
+                             * normally should add answer to answers
                              */
                             answers.add(faq);
                             int key = answers.size() - 1;
@@ -179,10 +199,6 @@ public class FaqDataService {
         }
     }
 
-    void clearResultMap() {
-        resultMap.clear();
-    }
-
     List<Keyword> getKeywords(String text) {
         return tfidfAnalyzer.analyze(text, TOP_N);
     }
@@ -190,17 +206,20 @@ public class FaqDataService {
     /**
      * method to calculate sentence similarity for faqs
      * @param question - input question
-     * @param keys - key list in faqMap
+     * @param hash - thread hash
      * @param counter - CountDownLatch
+     * @param map - result map
      */
-    public void calcSimilarity(String question, List<Keyword> qKeyWord, List<Integer> keys, CountDownLatch counter) {
-        log.info("calcSimilarity running on thread: {}, question: {}, keyList: {}",
-                Thread.currentThread().getName(), question, StringUtils.join(keys, ","));
+    void calcSimilarity(String question, List<Keyword> qKeyWord, int hash,
+                               CountDownLatch counter, ConcurrentHashMap<Integer, Double> map) {
+        log.debug("calcSimilarity running on thread: {}, question: {}, hash: {}, result count: {}",
+                Thread.currentThread().getName(), question, hash, map.size());
 
         double finalSim = 0;
         int finalKey = -1;
         int finalHitCount = 0;
         String matchFaq = "";
+        HashSet<Integer> keys = keyMap.get(hash);
         for (Integer i : keys) {
             List<String> faqs = faqMap.get(i);
             double sectionHighSim = 0;
@@ -240,13 +259,18 @@ public class FaqDataService {
                     misLen += misKey.length();
                 }
                 double misRatio = (double)misLen / s.length();
+                if (misRatio > 0.5) {
+                    misRatio = 0.5;
+                }
                 double misSim = 1 - sim;
                 if (misSim < 0.1) {
                     misSim = 0.1;
                 } else if (misSim > 0.4) {
                     misSim = 0.4;
                 }
-                sim -= misSim * misRatio;
+                if (sim > 0.6) {
+                    sim -= misSim * misRatio;
+                }
 
                 if (sim > sectionHighSim) {
                     sectionHighSim = sim;
@@ -272,9 +296,9 @@ public class FaqDataService {
         }
 
         counter.countDown();
-        log.info("calcSimilarity done on thread: {}, similarity: {}, keyword: {}, " +
+        map.put(finalKey, finalSim);
+        log.debug("calcSimilarity done on thread: {}, similarity: {}, keyword: {}, " +
                         "matched key&sentence: {} - {}, now result count: {}",
-                Thread.currentThread().getName(), finalSim, finalHitCount, finalKey, matchFaq, resultMap.size());
-        resultMap.put(finalKey, finalSim);
+                Thread.currentThread().getName(), finalSim, finalHitCount, finalKey, matchFaq, map.size());
     }
 }

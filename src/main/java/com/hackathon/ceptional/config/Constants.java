@@ -12,5 +12,5 @@ public interface Constants {
 
     Integer THREAD_COUNT = 16;
 
-    Double FAQ_THRESHOLD = 0.6;
+    Double FAQ_THRESHOLD = 60.0;
 }

@@ -7,6 +7,7 @@ import com.hackathon.ceptional.model.CcsResponse;
 import com.hackathon.ceptional.model.RespMessage;
 import com.hackathon.ceptional.model.ResultModel;
 import com.hackathon.ceptional.service.FaqMatchService;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,27 +22,32 @@ import org.springframework.web.bind.annotation.RestController;
  * @date 2020/2/12
  */
 @RestController
+@Slf4j
 public class FaqController {
 
     private FaqMatchService faqMatchService;
+
     @Autowired
     private void setFaqMatchService(FaqMatchService service) {
         this.faqMatchService = service;
     }
 
-    @PostMapping("/doMatch")
-    public Object doMatch(@RequestBody String request) {
+    @PostMapping("/match")
+    public Object match(@RequestBody String request) {
+        log.info("match request, param: {}", request);
         String question = "";
         JsonObject jsonObject = JsonParser.parseString(request).getAsJsonObject();
         if (jsonObject.has(Constants.QUESTION)) {
             question = jsonObject.get(Constants.QUESTION).getAsString();
         }
 
-        if (StringUtils.isNotBlank(question)) {
-            ResultModel resultModel = faqMatchService.doMatch(question);
-            return CcsResponse.success(resultModel);
-        } else {
+        if (StringUtils.isBlank(question)) {
+            log.error("incorrect request data, match failed!");
             return CcsResponse.error(RespMessage.REQUEST_ERROR);
         }
+
+        ResultModel resultModel = faqMatchService.doMatch(question);
+        log.info("match request success, result: {}", resultModel.toString());
+        return CcsResponse.success(resultModel);
     }
 }
