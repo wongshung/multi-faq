@@ -4,12 +4,8 @@ import com.hackathon.ceptional.service.FaqDataService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
-
 import java.io.File;
-import java.io.IOException;
 
 /**
  * data initialization
@@ -31,13 +27,13 @@ public class DataInitializer implements CommandLineRunner {
     @Override
     public void run(String... args) {
         log.info("DataInitializer start to initialize ...");
-        Resource resource = new ClassPathResource("static/Hackathon_P1_trainingSet.xlsx");
+        String configPath = System.getProperty("user.dir")+File.separator+"config";
+        String filePath = configPath.concat("/Hackathon_P1_trainingSet.xlsx");
         try {
-            File excelFile = resource.getFile();
+            File excelFile = new File(filePath);
             dataInitService.initData(excelFile);
-        } catch (IOException ex) {
-            log.error("DataInitializer failed to init training excel file!");
+        } catch (Exception ex) {
+            log.error("DataInitializer failed to init training excel file: {}", ex);
         }
-
     }
 }
