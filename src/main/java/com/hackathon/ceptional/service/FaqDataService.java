@@ -15,10 +15,7 @@ import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 
@@ -207,29 +204,46 @@ public class FaqDataService {
             String sectionResultFaq = "";
             int sectionHitCount = 0;
             for (String s : faqs) {
-                double sim1 = SimilarityUtil.sim(question, s);
-                double sim2 = SimilarityUtil.jacCardSimilarity(question, s);
-                double sim3 = SimilarityUtil.metricLcsSimilarity(question, s);
-                double sim4 = SimilarityUtil.nGramSimilarity(question, s);
+                double sim1 = SimilarityUtil.jaroSimilarity(question, s);
+                double sim2 = SimilarityUtil.sim(question, s);
+                double sim3 = SimilarityUtil.jacCardSimilarity(question, s);
 
-                double sim = (sim1 + sim2 + sim3 + sim4) / 4;
+                double sim = (sim1 + sim2 + sim3) / 3;
 
                 // key word aspect
                 HashSet<String> faqKeyWords = keyWordMap.get(s);
+                Set<String> hitSet = new HashSet<>();
                 int hitCount = 0;
                 int hitTextLen = 0;
                 for (Keyword key : qKeyWord) {
                     if (faqKeyWords.contains(key.getName())) {
                         hitCount++;
                         hitTextLen += key.getName().length();
+                        hitSet.add(key.getName());
                     }
                 }
                 if (hitCount > 0) {
-                    double ratio = (double)hitTextLen / s.length();
+                    double ratio = (double)(hitTextLen / s.length() + hitTextLen / question.length()) / 2;
                     sim += (1 - sim) * hitCount / faqKeyWords.size() * ratio;
                 } else {
                     sim *= 0.8;
                 }
+
+                // find missing faq keyword
+                Set<String> excludeSet = new HashSet<>(faqKeyWords);
+                excludeSet.removeAll(hitSet);
+                int misLen = 0;
+                for (String misKey : excludeSet) {
+                    misLen += misKey.length();
+                }
+                double misRatio = (double)misLen / s.length();
+                double misSim = 1 - sim;
+                if (misSim < 0.1) {
+                    misSim = 0.1;
+                } else if (misSim > 0.4) {
+                    misSim = 0.4;
+                }
+                sim -= misSim * misRatio;
 
                 if (sim > sectionHighSim) {
                     sectionHighSim = sim;
