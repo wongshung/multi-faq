@@ -1,9 +1,13 @@
 package com.hackathon.ceptional;
 
+import cn.hutool.Hutool;
+import com.hackathon.ceptional.util.HuToolUtil;
 import com.hackathon.ceptional.util.SimilarityUtil;
 import org.junit.Assert;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+
+import java.util.Vector;
 
 /**
  * test methods for similarity
@@ -31,5 +35,27 @@ class SimilarityTest {
 
 
         Assert.assertTrue(sim1 > 0);
+    }
+
+    @Test
+    void testHuSim() throws Exception {
+        String s1 = "购买汽车票电话号码错误";
+        String s2 = "预订手机号写错了怎么办";
+        Vector<String> v1 = HuToolUtil.participleChinese(s1);
+        Vector<String> v2 = HuToolUtil.participleChinese(s2);
+        Vector<String> v3 = HuToolUtil.participleHanLP(s1);
+        Vector<String> v4 = HuToolUtil.participleHanLP(s2);
+        Vector<String> v5 = HuToolUtil.participleIk(s1);
+        Vector<String> v6 = HuToolUtil.participleIk(s2);
+        Vector<String> v7 = HuToolUtil.participleJieBa(s1);
+        Vector<String> v8 = HuToolUtil.participleJieBa(s2);
+
+        double rawSim = HuToolUtil.findSimilarity(s1, s2);
+        double chineseSim = HuToolUtil.getSimilarity(v1, v2);
+        double hanlpSim = HuToolUtil.getSimilarity(v3, v4);
+        double ikSim = HuToolUtil.getSimilarity(v5, v6);
+        double jiebaSim = HuToolUtil.getSimilarity(v7, v8);
+
+        Assert.assertTrue(rawSim > 0 && chineseSim > 0 && hanlpSim > 0 && ikSim > 0 && jiebaSim > 0);
     }
 }

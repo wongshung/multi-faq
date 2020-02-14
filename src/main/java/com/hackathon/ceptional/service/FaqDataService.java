@@ -2,6 +2,7 @@ package com.hackathon.ceptional.service;
 
 import com.hackathon.ceptional.config.Constants;
 import com.hackathon.ceptional.util.ExcelUtil;
+import com.hackathon.ceptional.util.HuToolUtil;
 import com.hackathon.ceptional.util.SimilarityUtil;
 import com.qianxinyao.analysis.jieba.keyword.Keyword;
 import com.qianxinyao.analysis.jieba.keyword.TFIDFAnalyzer;
@@ -299,11 +300,14 @@ public class FaqDataService {
     }
 
     private Pair<Integer, Double> similarityCalc(String question, List<Keyword> qKeyWord, String faq) {
-        double sim1 = SimilarityUtil.jaroSimilarity(question, faq);
-        double sim2 = SimilarityUtil.sim(question, faq);
-        double sim3 = SimilarityUtil.jacCardSimilarity(question, faq);
+        Vector<String> v1 = HuToolUtil.participleIk(question);
+        Vector<String> v2 = HuToolUtil.participleIk(faq);
+        double sim = HuToolUtil.getSimilarity(v1, v2);
 
-        double sim = (jaroRatio * sim1 + simRatio * sim2 + jacRatio * sim3) / 10;
+//        double sim1 = SimilarityUtil.jaroSimilarity(question, faq);
+//        double sim2 = SimilarityUtil.sim(question, faq);
+//        double sim3 = SimilarityUtil.jacCardSimilarity(question, faq);
+//        double sim = (jaroRatio * sim1 + simRatio * sim2 + jacRatio * sim3) / 10;
 
         // key word aspect
         HashSet<String> faqKeyWords = keyWordMap.get(faq);

@@ -1,8 +1,12 @@
 package com.hackathon.ceptional.service;
 
+import cn.hutool.extra.tokenizer.TokenizerEngine;
+import cn.hutool.extra.tokenizer.engine.jieba.JiebaEngine;
 import com.hackathon.ceptional.config.Constants;
 import com.hackathon.ceptional.model.ResultModel;
 import com.hackathon.ceptional.model.ResultModel.Answer;
+import com.hackathon.ceptional.model.SimilarityModel;
+import com.hackathon.ceptional.util.SimilarityUtil;
 import com.hackathon.ceptional.util.ThreadPoolUtil;
 import com.qianxinyao.analysis.jieba.keyword.Keyword;
 import lombok.extern.slf4j.Slf4j;
@@ -98,5 +102,13 @@ public class FaqMatchService {
         log.info("doMatch done for q: {}, score: {}, answer: {}", question, highestScore, finalAnswer);
 
         return result;
+    }
+
+    public SimilarityModel similarity(String s1, String s2) {
+        return new SimilarityModel(
+                SimilarityUtil.jaroSimilarity(s1, s2), SimilarityUtil.sim(s1, s2),
+                SimilarityUtil.damerauSimilarity(s1, s2), SimilarityUtil.jacCardSimilarity(s1, s2),
+                SimilarityUtil.metricLcsSimilarity(s1, s2), SimilarityUtil.nGramSimilarity(s1, s2)
+        );
     }
 }
