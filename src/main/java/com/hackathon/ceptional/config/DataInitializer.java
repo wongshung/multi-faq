@@ -28,7 +28,7 @@ public class DataInitializer implements CommandLineRunner {
     public void run(String... args) {
         log.info("DataInitializer start to initialize ...");
         String configPath = System.getProperty("user.dir")+File.separator+"config";
-        String filePath = configPath.concat("/Hackathon_P1_trainingSet_1.xlsx");
+        String filePath = configPath.concat("/Hackathon_P1_trainingSet.xlsx");
         try {
             File excelFile = new File(filePath);
             dataInitService.initData(excelFile);

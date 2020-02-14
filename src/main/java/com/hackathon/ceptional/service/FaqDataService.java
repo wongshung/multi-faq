@@ -14,6 +14,7 @@ import org.apache.poi.xssf.usermodel.XSSFCell;
 import org.apache.poi.xssf.usermodel.XSSFRow;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import java.io.File;
 import java.text.NumberFormat;
@@ -59,7 +60,28 @@ public class FaqDataService {
     private TFIDFAnalyzer tfidfAnalyzer = new TFIDFAnalyzer();
     private static final int TOP_N = 5;
 
-    private static final NumberFormat nf = NumberFormat.getInstance();
+    private static final NumberFormat NF = NumberFormat.getInstance();
+    private static final String NUMERIC_SPLIT_COMMA = ",";
+
+    /**
+     * algorithm weight on calculation
+     */
+    @Value("${faq.jaro.ratio}")
+    private final int JARO_RATIO = 4;
+    @Value("${faq.sim.ratio}")
+    private final int SIM_RATIO = 3;
+    @Value("${faq.jac.ratio}")
+    private final int JAC_RATIO = 3;
+
+    /**
+     * faq adjustment parameters
+     */
+    @Value("${faq.threshold}")
+    private final double THRESHOLD = 60.0;
+    @Value("${faq.miss.key.ratio}")
+    private final double MIS_KEY_RATIO = 1.0;
+
+    private static final String EXCEL_2007 = "xlsx";
 
     /**
      * init data from provided excel, now only supports 2007 format and the file content must be correct
@@ -67,7 +89,7 @@ public class FaqDataService {
      */
     public void initData(File dataFile) {
         log.info("Init data begin, file : {}", dataFile.getPath());
-        if (!dataFile.getName().endsWith("xlsx")) {
+        if (!dataFile.getName().endsWith(EXCEL_2007)) {
             log.error("incorrect training data file format!");
             return;
         }
@@ -92,7 +114,7 @@ public class FaqDataService {
         // init keyMap
         initKeyMap();
 
-        log.info("initData done");
+        log.info("InitData done.");
     }
 
     private void initKeyMap() {
@@ -206,9 +228,9 @@ public class FaqDataService {
         String text;
         if (cell.getCellType().equals(CellType.NUMERIC)) {
             // handle numeric cell
-            text = nf.format(cell.getNumericCellValue());
-            if (text.contains(",")) {
-                text =text.replace(",", "");
+            text = NF.format(cell.getNumericCellValue());
+            if (text.contains(NUMERIC_SPLIT_COMMA)) {
+                text = text.replace(NUMERIC_SPLIT_COMMA, "");
             }
         } else {
             text = cell.toString();
@@ -248,7 +270,7 @@ public class FaqDataService {
                 double sim2 = SimilarityUtil.sim(question, s);
                 double sim3 = SimilarityUtil.jacCardSimilarity(question, s);
 
-                double sim = (sim1 + sim2 + sim3) / 3;
+                double sim = (JARO_RATIO * sim1 + SIM_RATIO * sim2 + JAC_RATIO * sim3) / 10;
 
                 // key word aspect
                 HashSet<String> faqKeyWords = keyWordMap.get(s);
@@ -276,7 +298,7 @@ public class FaqDataService {
                 for (String misKey : excludeSet) {
                     misLen += misKey.length();
                 }
-                double misRatio = (double)misLen / s.length();
+                double misRatio = MIS_KEY_RATIO * misLen / s.length();
                 if (misRatio > 0.5) {
                     misRatio = 0.5;
                 }
@@ -286,7 +308,7 @@ public class FaqDataService {
                 } else if (misSim > 0.4) {
                     misSim = 0.4;
                 }
-                if (sim > 0.6) {
+                if (sim > THRESHOLD / 100) {
                     sim -= misSim * misRatio;
                 }
 

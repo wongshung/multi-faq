@@ -11,6 +11,4 @@ public interface Constants {
     String QUESTION = "question";
 
     Integer THREAD_COUNT = 16;
-
-    Double FAQ_THRESHOLD = 60.0;
 }
