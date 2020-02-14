@@ -1,7 +1,5 @@
 package com.hackathon.ceptional.service;
 
-import cn.hutool.extra.tokenizer.TokenizerEngine;
-import cn.hutool.extra.tokenizer.engine.jieba.JiebaEngine;
 import com.hackathon.ceptional.config.Constants;
 import com.hackathon.ceptional.model.ResultModel;
 import com.hackathon.ceptional.model.ResultModel.Answer;
@@ -75,12 +73,14 @@ public class FaqMatchService {
             }
         }
 
-
         ResultModel result = new ResultModel();
         List<Answer> resultAnswers = new ArrayList<>();
         result.setStatus(0);
         // adjust to hundred scale
         highestScore *= 100;
+        // only precise, so set up a base score above threshold
+        highestScore = threshold + (100-threshold) * highestScore / 100;
+
         BigDecimal b = new BigDecimal(highestScore);
         highestScore = b.setScale(2, BigDecimal.ROUND_HALF_UP).doubleValue();
         result.setAnswer_score(highestScore);

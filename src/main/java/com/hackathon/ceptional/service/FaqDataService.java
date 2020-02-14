@@ -75,6 +75,9 @@ public class FaqDataService {
     @Value("${faq.jac.ratio}")
     private int jacRatio = 3;
 
+    @Value("${faq.segment.method}")
+    private String segmentMethod = "ikea";
+
     /**
      * faq adjustment parameters
      */
@@ -300,14 +303,32 @@ public class FaqDataService {
     }
 
     private Pair<Integer, Double> similarityCalc(String question, List<Keyword> qKeyWord, String faq) {
-        Vector<String> v1 = HuToolUtil.participleIk(question);
-        Vector<String> v2 = HuToolUtil.participleIk(faq);
-        double sim = HuToolUtil.getSimilarity(v1, v2);
-
-//        double sim1 = SimilarityUtil.jaroSimilarity(question, faq);
-//        double sim2 = SimilarityUtil.sim(question, faq);
-//        double sim3 = SimilarityUtil.jacCardSimilarity(question, faq);
-//        double sim = (jaroRatio * sim1 + simRatio * sim2 + jacRatio * sim3) / 10;
+        double sim = 0;
+        if (jacRatio >= 5) {
+            // use previous method
+            double sim1 = SimilarityUtil.jaroSimilarity(question, faq);
+            double sim2 = SimilarityUtil.sim(question, faq);
+            double sim3 = SimilarityUtil.jacCardSimilarity(question, faq);
+            sim = (jaroRatio * sim1 + simRatio * sim2 + jacRatio * sim3) / 10;
+        } else {
+            // use new method
+            Vector<String> v1 = null;
+            Vector<String> v2 = null;
+            if (segmentMethod.equals("ikea")) {
+                v1 = HuToolUtil.participleIk(question);
+                v2 = HuToolUtil.participleIk(faq);
+            } else if (segmentMethod.equals("hanlp")) {
+                v1 = HuToolUtil.participleHanLP(question);
+                v2 = HuToolUtil.participleHanLP(faq);
+            } else if (segmentMethod.equals("jieba")) {
+                v1 = HuToolUtil.participleJieBa(question);
+                v2 = HuToolUtil.participleJieBa(faq);
+            } else if (segmentMethod.equals("chn")) {
+                v1 = HuToolUtil.participleChinese(question);
+                v2 = HuToolUtil.participleChinese(faq);
+            }
+            sim = HuToolUtil.getSimilarity(v1, v2);
+        }
 
         // key word aspect
         HashSet<String> faqKeyWords = keyWordMap.get(faq);
