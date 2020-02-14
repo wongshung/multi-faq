@@ -5,6 +5,7 @@ import com.hackathon.ceptional.util.ExcelUtil;
 import com.hackathon.ceptional.util.SimilarityUtil;
 import com.qianxinyao.analysis.jieba.keyword.Keyword;
 import com.qianxinyao.analysis.jieba.keyword.TFIDFAnalyzer;
+import javafx.util.Pair;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -67,19 +68,19 @@ public class FaqDataService {
      * algorithm weight on calculation
      */
     @Value("${faq.jaro.ratio}")
-    private final int JARO_RATIO = 4;
+    private int jaroRatio = 4;
     @Value("${faq.sim.ratio}")
-    private final int SIM_RATIO = 3;
+    private int simRatio = 3;
     @Value("${faq.jac.ratio}")
-    private final int JAC_RATIO = 3;
+    private int jacRatio = 3;
 
     /**
      * faq adjustment parameters
      */
     @Value("${faq.threshold}")
-    private final double THRESHOLD = 60.0;
+    private double threshold= 60.0;
     @Value("${faq.miss.key.ratio}")
-    private final double MIS_KEY_RATIO = 1.0;
+    private double missKeyRatio = 1.0;
 
     private static final String EXCEL_2007 = "xlsx";
 
@@ -266,56 +267,11 @@ public class FaqDataService {
             String sectionResultFaq = "";
             int sectionHitCount = 0;
             for (String s : faqs) {
-                double sim1 = SimilarityUtil.jaroSimilarity(question, s);
-                double sim2 = SimilarityUtil.sim(question, s);
-                double sim3 = SimilarityUtil.jacCardSimilarity(question, s);
-
-                double sim = (JARO_RATIO * sim1 + SIM_RATIO * sim2 + JAC_RATIO * sim3) / 10;
-
-                // key word aspect
-                HashSet<String> faqKeyWords = keyWordMap.get(s);
-                Set<String> hitSet = new HashSet<>();
-                int hitCount = 0;
-                int hitTextLen = 0;
-                for (Keyword key : qKeyWord) {
-                    if (faqKeyWords.contains(key.getName())) {
-                        hitCount++;
-                        hitTextLen += key.getName().length();
-                        hitSet.add(key.getName());
-                    }
-                }
-                if (hitCount > 0) {
-                    double ratio = (double)(hitTextLen / s.length() + hitTextLen / question.length()) / 2;
-                    sim += (1 - sim) * hitCount / faqKeyWords.size() * ratio;
-                } else {
-                    sim *= 0.8;
-                }
-
-                // find missing faq keyword
-                Set<String> excludeSet = new HashSet<>(faqKeyWords);
-                excludeSet.removeAll(hitSet);
-                int misLen = 0;
-                for (String misKey : excludeSet) {
-                    misLen += misKey.length();
-                }
-                double misRatio = MIS_KEY_RATIO * misLen / s.length();
-                if (misRatio > 0.5) {
-                    misRatio = 0.5;
-                }
-                double misSim = 1 - sim;
-                if (misSim < 0.1) {
-                    misSim = 0.1;
-                } else if (misSim > 0.4) {
-                    misSim = 0.4;
-                }
-                if (sim > THRESHOLD / 100) {
-                    sim -= misSim * misRatio;
-                }
-
-                if (sim > sectionHighSim) {
-                    sectionHighSim = sim;
+                Pair<Integer, Double> simResult = similarityCalc(question, qKeyWord, s);
+                if (simResult.getValue() > sectionHighSim) {
+                    sectionHighSim = simResult.getValue();
                     sectionResultFaq = s;
-                    sectionHitCount = hitCount;
+                    sectionHitCount = simResult.getKey();
                 }
                 if (sectionHighSim > 0.95) {
                     // very high similarity, directly end this loop
@@ -340,5 +296,55 @@ public class FaqDataService {
         log.debug("calcSimilarity done on thread: {}, similarity: {}, keyword: {}, " +
                         "matched key&sentence: {} - {}, now result count: {}",
                 Thread.currentThread().getName(), finalSim, finalHitCount, finalKey, matchFaq, map.size());
+    }
+
+    private Pair<Integer, Double> similarityCalc(String question, List<Keyword> qKeyWord, String faq) {
+        double sim1 = SimilarityUtil.jaroSimilarity(question, faq);
+        double sim2 = SimilarityUtil.sim(question, faq);
+        double sim3 = SimilarityUtil.jacCardSimilarity(question, faq);
+
+        double sim = (jaroRatio * sim1 + simRatio * sim2 + jacRatio * sim3) / 10;
+
+        // key word aspect
+        HashSet<String> faqKeyWords = keyWordMap.get(faq);
+        Set<String> hitSet = new HashSet<>();
+        int hitCount = 0;
+        int hitTextLen = 0;
+        for (Keyword key : qKeyWord) {
+            if (faqKeyWords.contains(key.getName())) {
+                hitCount++;
+                hitTextLen += key.getName().length();
+                hitSet.add(key.getName());
+            }
+        }
+        if (hitCount > 0) {
+            double ratio = (double)(hitTextLen / faq.length() + hitTextLen / question.length()) / 2;
+            sim += (1 - sim) * hitCount / faqKeyWords.size() * ratio;
+        } else {
+            sim *= 0.8;
+        }
+
+        // find missing faq keyword
+        Set<String> excludeSet = new HashSet<>(faqKeyWords);
+        excludeSet.removeAll(hitSet);
+        int misLen = 0;
+        for (String misKey : excludeSet) {
+            misLen += misKey.length();
+        }
+        double misRatio = missKeyRatio * misLen / faq.length();
+        if (misRatio > 0.5) {
+            misRatio = 0.5;
+        }
+        double misSim = 1 - sim;
+        if (misSim < 0.1) {
+            misSim = 0.1;
+        } else if (misSim > 0.4) {
+            misSim = 0.4;
+        }
+        if (sim > threshold / 100) {
+            sim -= misSim * misRatio;
+        }
+
+        return new Pair<>(hitCount, sim);
     }
 }
