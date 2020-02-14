@@ -16,6 +16,7 @@ import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import java.io.File;
+import java.text.NumberFormat;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -57,6 +58,8 @@ public class FaqDataService {
 
     private TFIDFAnalyzer tfidfAnalyzer = new TFIDFAnalyzer();
     private static final int TOP_N = 5;
+
+    private static final NumberFormat nf = NumberFormat.getInstance();
 
     /**
      * init data from provided excel, now only supports 2007 format and the file content must be correct
@@ -133,12 +136,12 @@ public class FaqDataService {
             // read faq and answer
             cell = row.getCell(1);
             if (cell != null && cell.getCellType() != CellType.BLANK) {
-                String faq = cell.toString();
+                String faq = getCellText(cell);
                 if (StringUtils.isNotBlank(faq)) {
                     // valid faq, now check answer
                     cell = row.getCell(3);
                     if (cell != null && cell.getCellType() != CellType.BLANK) {
-                        String answer = cell.toString();
+                        String answer = getCellText(cell);
                         if (!answers.contains(faq) && StringUtils.isNotBlank(answer)) {
                             /*
                              * hackathon special requirement, set faq as answer now.
@@ -180,13 +183,13 @@ public class FaqDataService {
             // read faq
             cell = row.getCell(1);
             if (cell != null && cell.getCellType() != CellType.BLANK) {
-                String faq = cell.toString();
+                String faq = getCellText(cell);
                 for (List<String> faqs : faqMap.values()) {
                     if (faqs.contains(faq)) {
                         // faq found, now add related question
                         cell = row.getCell(0);
                         if (cell != null && cell.getCellType() != CellType.BLANK) {
-                            String question = cell.toString();
+                            String question = getCellText(cell);
                             if (StringUtils.isNotBlank(question)) {
                                 // valid question, add to faqMap
                                 faqs.add(question);
@@ -197,6 +200,21 @@ public class FaqDataService {
                 }
             }
         }
+    }
+
+    private String getCellText(XSSFCell cell) {
+        String text;
+        if (cell.getCellType().equals(CellType.NUMERIC)) {
+            // handle numeric cell
+            text = nf.format(cell.getNumericCellValue());
+            if (text.contains(",")) {
+                text =text.replace(",", "");
+            }
+        } else {
+            text = cell.toString();
+        }
+
+        return text;
     }
 
     List<Keyword> getKeywords(String text) {

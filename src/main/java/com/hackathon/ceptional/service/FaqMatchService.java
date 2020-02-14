@@ -7,6 +7,7 @@ import com.hackathon.ceptional.util.ThreadPoolUtil;
 import com.qianxinyao.analysis.jieba.keyword.Keyword;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -26,6 +27,12 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class FaqMatchService {
 
+    /**
+     * match threshold, default 60
+     */
+    @Value("${faq.threshold}")
+    private final double THRESHOLD = 60.0;
+
     private FaqDataService faqDataService;
     @Autowired
     private void setDataInitService(FaqDataService service) {
@@ -33,7 +40,7 @@ public class FaqMatchService {
     }
 
     public ResultModel doMatch(String question) {
-        log.info("doMatch running for q: {}", question);
+        log.info("doMatch running for q: {}, match threshold: {}", question, THRESHOLD);
         List<Keyword> questionKeyWord = faqDataService.getKeywords(question);
         ConcurrentHashMap<Integer, Double> resultMap = new ConcurrentHashMap<>(Constants.THREAD_COUNT);
         // using async runner to do match
@@ -75,7 +82,7 @@ public class FaqMatchService {
         result.setAnswer_score(highestScore);
 
         String finalAnswer = "";
-        if (highestScore >= Constants.FAQ_THRESHOLD) {
+        if (highestScore >= THRESHOLD) {
             // only return the result with 60 or higher score
             finalAnswer = faqDataService.getAnswers().get(key);
             Answer answer = result.new Answer();

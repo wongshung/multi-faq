@@ -17,8 +17,8 @@ class SimilarityTest {
 
     @Test
     void testSim() {
-        String text1 = "联系客服";
-        String text2 = "如何联系人工";
+        String text1 = "95711.0";
+        String text2 = "95711";
         /**
          * jaro, edit distance, damerau, jacCard, metricLcs, nGram
          */
