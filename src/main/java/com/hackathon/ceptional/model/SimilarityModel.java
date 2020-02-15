@@ -15,6 +15,9 @@ import lombok.Setter;
 @Setter
 @AllArgsConstructor
 public class SimilarityModel {
+    /**
+     * debatty result
+     */
     private double jaro;
     private double editDistance;
     private double damerau;
@@ -29,6 +32,20 @@ public class SimilarityModel {
                 .concat(", damerau:").concat(String.valueOf(damerau))
                 .concat(", jacCard:").concat(String.valueOf(jacCard))
                 .concat(", metricLcs:").concat(String.valueOf(metricLcs))
-                .concat(", nGram:").concat(String.valueOf(nGram));
+                .concat(", nGram:").concat(String.valueOf(nGram))
+                .concat(", rawSim:").concat(String.valueOf(rawSim))
+                .concat(", chineseSim:").concat(String.valueOf(chineseSim))
+                .concat(", hanlpSim:").concat(String.valueOf(hanlpSim))
+                .concat(", ikeaSim:").concat(String.valueOf(ikeaSim))
+                .concat(", jiebaSim:").concat(String.valueOf(jiebaSim));
     }
+
+    /**
+     * hu tool result
+     */
+    private double rawSim;
+    private double chineseSim;
+    private double hanlpSim;
+    private double ikeaSim;
+    private double jiebaSim;
 }

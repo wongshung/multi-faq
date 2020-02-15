@@ -69,4 +69,68 @@ public class FaqController {
         log.info("similarity request success, result: {}", simResult.toString());
         return CcsResponse.success(simResult);
     }
+
+    @PostMapping("/jiebaTfidf")
+    public Object jiebaTfidf(@RequestBody String request) {
+        log.info("jiebaTfidf request, param: {}", request);
+        String text = "";
+        JsonObject jsonObject = JsonParser.parseString(request).getAsJsonObject();
+        if (jsonObject.has("text")) {
+            text = jsonObject.get("text").getAsString();
+        }
+
+        String result = faqMatchService.jiebaTfidf(text);
+        log.info("jiebaTfidf request success, result: {}", result);
+        return CcsResponse.success(result);
+    }
+
+    @PostMapping("/wordSegment")
+    public Object wordSegment(@RequestBody String request) {
+        log.info("wordSegment request, param: {}", request);
+        String text = "";
+        JsonObject jsonObject = JsonParser.parseString(request).getAsJsonObject();
+        if (jsonObject.has("text")) {
+            text = jsonObject.get("text").getAsString();
+        }
+
+        String result = faqMatchService.wordSegment(text);
+        log.info("wordSegment request success, result: {}", result);
+        return CcsResponse.success(result);
+    }
+
+    @PostMapping("/faqTfidfSim")
+    public Object faqTfidfSim(@RequestBody String request) {
+        log.info("faqTfidfSim request, param: {}", request);
+        String faq = "";
+        String q = "";
+        JsonObject jsonObject = JsonParser.parseString(request).getAsJsonObject();
+        if (jsonObject.has("faq")) {
+            faq = jsonObject.get("faq").getAsString();
+        }
+        if (jsonObject.has("q")) {
+            q = jsonObject.get("q").getAsString();
+        }
+
+        double simResult = faqMatchService.faqTfidfSim(faq, q);
+        log.info("faqTfidfSim request success, result: {}", simResult);
+        return CcsResponse.success(simResult);
+    }
+
+    @PostMapping("/symmetricTfidfSim")
+    public Object symmetricTfidfSim(@RequestBody String request) {
+        log.info("symmetricTfidfSim request, param: {}", request);
+        String text1 = "";
+        String text2 = "";
+        JsonObject jsonObject = JsonParser.parseString(request).getAsJsonObject();
+        if (jsonObject.has("text1")) {
+            text1 = jsonObject.get("text1").getAsString();
+        }
+        if (jsonObject.has("text2")) {
+            text2 = jsonObject.get("text2").getAsString();
+        }
+
+        double simResult = faqMatchService.symmetricTfidfSim(text1, text2);
+        log.info("symmetricTfidfSim request success, result: {}", simResult);
+        return CcsResponse.success(simResult);
+    }
 }

@@ -21,7 +21,7 @@ import java.util.List;
 class JiebaTest {
     @Test
     void testWordExtract() {
-        String content="Hackathon test";
+        String content="5分钟内未成功出票，会赔付吗？怎么赔付？";
         int topN = 5;
         TFIDFAnalyzer tfidfAnalyzer=new TFIDFAnalyzer();
         List<Keyword> list=tfidfAnalyzer.analyze(content,topN);

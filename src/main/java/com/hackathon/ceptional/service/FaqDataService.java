@@ -19,10 +19,12 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import java.io.File;
+import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import static java.util.stream.Collectors.toList;
 
 /**
  * data init methods, from provided training set
@@ -50,7 +52,7 @@ public class FaqDataService {
     /**
      * key word map, using tf-idf method
      */
-    private ConcurrentHashMap<String, HashSet<String> > keyWordMap = new ConcurrentHashMap<>();
+    private ConcurrentHashMap<String, List<Keyword> > keyWordMap = new ConcurrentHashMap<>();
 
     private static final int SHEET_COUNT = 2;
 
@@ -63,18 +65,20 @@ public class FaqDataService {
     private static final int TOP_N = 5;
 
     private static final NumberFormat NF = NumberFormat.getInstance();
+    private static final DecimalFormat DF = new DecimalFormat("0.00");
     private static final String NUMERIC_SPLIT_COMMA = ",";
 
     /**
-     * algorithm weight on calculation
+     * algorithm method & weight on calculation
      */
-    @Value("${faq.jaro.ratio}")
-    private int jaroRatio = 4;
+    @Value("${faq.algorithm.conf}")
+    private int algorithm = 2;
+    @Value("${faq.sim.method}")
+    private String simMethod = "hutool";
+    @Value("${faq.tfidf.ratio}")
+    private int tfidfRatio = 7;
     @Value("${faq.sim.ratio}")
     private int simRatio = 3;
-    @Value("${faq.jac.ratio}")
-    private int jacRatio = 3;
-
     @Value("${faq.segment.method}")
     private String segmentMethod = "ikea";
 
@@ -83,8 +87,6 @@ public class FaqDataService {
      */
     @Value("${faq.threshold}")
     private double threshold= 60.0;
-    @Value("${faq.miss.key.ratio}")
-    private double missKeyRatio = 1.0;
 
     private static final String EXCEL_2007 = "xlsx";
 
@@ -138,10 +140,8 @@ public class FaqDataService {
     private void setKeyWordMap() {
         faqMap.forEach((k, v) ->
             v.forEach(s -> {
-                HashSet<String> keyWordSet = new HashSet<>();
                 List<Keyword> faqKeyWords = tfidfAnalyzer.analyze(s, TOP_N);
-                faqKeyWords.forEach(keyword -> keyWordSet.add(keyword.getName()));
-                keyWordMap.put(s, keyWordSet);
+                keyWordMap.put(s, faqKeyWords);
             })
         );
     }
@@ -262,20 +262,20 @@ public class FaqDataService {
 
         double finalSim = 0;
         int finalKey = -1;
-        int finalHitCount = 0;
+        String finalSimInfo = "";
         String matchFaq = "";
         HashSet<Integer> keys = keyMap.get(hash);
         for (Integer i : keys) {
             List<String> faqs = faqMap.get(i);
             double sectionHighSim = 0;
             String sectionResultFaq = "";
-            int sectionHitCount = 0;
+            String sectionSimInfo = "";
             for (String s : faqs) {
-                Pair<Integer, Double> simResult = similarityCalc(question, qKeyWord, s);
+                Pair<String, Double> simResult = similarityCalc(question, qKeyWord, s);
                 if (simResult.getValue() > sectionHighSim) {
                     sectionHighSim = simResult.getValue();
                     sectionResultFaq = s;
-                    sectionHitCount = simResult.getKey();
+                    sectionSimInfo = simResult.getKey();
                 }
                 if (sectionHighSim > 0.95) {
                     // very high similarity, directly end this loop
@@ -287,7 +287,7 @@ public class FaqDataService {
                 finalSim = sectionHighSim;
                 finalKey = i;
                 matchFaq = sectionResultFaq;
-                finalHitCount = sectionHitCount;
+                finalSimInfo = sectionSimInfo;
             }
             if (finalSim > 0.95) {
                 // very high similarity, also end this loop
@@ -297,21 +297,21 @@ public class FaqDataService {
 
         counter.countDown();
         map.put(finalKey, finalSim);
-        log.debug("calcSimilarity done on thread: {}, similarity: {}, keyword: {}, " +
+        log.debug("calcSimilarity done on thread: {}, similarity: {}, sim-tf: {}, " +
                         "matched key&sentence: {} - {}, now result count: {}",
-                Thread.currentThread().getName(), finalSim, finalHitCount, finalKey, matchFaq, map.size());
+                Thread.currentThread().getName(), DF.format(finalSim), finalSimInfo, finalKey, matchFaq, map.size());
     }
 
-    private Pair<Integer, Double> similarityCalc(String question, List<Keyword> qKeyWord, String faq) {
+    private Pair<String, Double> similarityCalc(String question, List<Keyword> qKeyWord, String faq) {
         double sim = 0;
-        if (jacRatio >= 5) {
+        if ("debatty".equals(simMethod)) {
             // use previous method
             double sim1 = SimilarityUtil.jaroSimilarity(question, faq);
             double sim2 = SimilarityUtil.sim(question, faq);
             double sim3 = SimilarityUtil.jacCardSimilarity(question, faq);
-            sim = (jaroRatio * sim1 + simRatio * sim2 + jacRatio * sim3) / 10;
+            sim = (5 * sim1 + 3 * sim2 + 2 * sim3) / 10;
         } else {
-            // use new method
+            // use hutool method
             Vector<String> v1 = null;
             Vector<String> v2 = null;
             if (segmentMethod.equals("ikea")) {
@@ -330,46 +330,159 @@ public class FaqDataService {
             sim = HuToolUtil.getSimilarity(v1, v2);
         }
 
-        // key word aspect
-        HashSet<String> faqKeyWords = keyWordMap.get(faq);
-        Set<String> hitSet = new HashSet<>();
-        int hitCount = 0;
-        int hitTextLen = 0;
-        for (Keyword key : qKeyWord) {
-            if (faqKeyWords.contains(key.getName())) {
-                hitCount++;
-                hitTextLen += key.getName().length();
-                hitSet.add(key.getName());
+        String simInfo = "";
+        // algorithm != 0, need to use tfidf
+        if (algorithm != 0) {
+            List<Keyword> faqKeyWords = keyWordMap.get(faq);
+            // calculate tfidf
+            double tfidfSim = duplexKeywordSim(faqKeyWords, qKeyWord);
+            List<String> qKeys = qKeyWord.parallelStream().map(Keyword::getName).collect(toList());
+            List<String> faqKeys = faqKeyWords.parallelStream().map(Keyword::getName).collect(toList());
+            long hitCount = faqKeys.parallelStream().filter(item -> qKeys.contains(item)).count();
+
+            if (algorithm == 2) {
+                // dynamic ratio
+                int qLen = question.length();
+                int minLen = faq.length() < qLen ? faq.length() : qLen;
+                int tfRatio = 1 + (minLen - 1) / 4;
+                tfRatio += hitCount * 2;
+                if (tfRatio > 9) {
+                    tfRatio = 9;
+                }
+
+                int simRatio = 10 - tfRatio;
+                simInfo = DF.format(sim) + " * " + simRatio + " & " + DF.format(tfidfSim) + " * " + tfRatio
+                        + ", count: " + hitCount;
+                // final sim
+                sim = (sim * simRatio + tfidfSim * tfRatio) / 10;
+            } else {
+                // only use tfidf similarity
+                sim = tfidfSim;
+                simInfo = DF.format(sim) + " * 0 & " + DF.format(tfidfSim) + " * 10, count: " + hitCount;
+            }
+        } else {
+            // else, just use sim value
+            simInfo = DF.format(sim) + " * 10 & 0 * 0";
+        }
+
+        return new Pair<>(simInfo, sim);
+    }
+
+    /**
+     * for faq usage
+     * @param faq - faq
+     * @param q - question
+     * @return normalized result
+     */
+    double faqTfidfSim(String faq, String q) {
+        List<Keyword> faqKeys = tfidfAnalyzer.analyze(faq, TOP_N);
+        List<Keyword> qKeys = tfidfAnalyzer.analyze(q, TOP_N);
+
+        return simplexKeywordSim(faqKeys, qKeys);
+    }
+
+    /**
+     * normal usage of tfidf like symmetric similarity caculation
+     * @param s1 - text 1
+     * @param s2 - text 2
+     * @return normalized result
+     */
+    double tfidfSim(String s1, String s2) {
+        List<Keyword> keys1 = tfidfAnalyzer.analyze(s1, TOP_N);
+        List<Keyword> keys2 = tfidfAnalyzer.analyze(s2, TOP_N);
+
+        return duplexKeywordSim(keys1, keys2);
+    }
+
+    /**
+     * simplex keyword similarity
+     * @param faq - target faq
+     * @param q - question
+     * @return similarity result
+     */
+    private double simplexKeywordSim(List<Keyword> faq, List<Keyword> q) {
+        List<String> faqName = new ArrayList<>();
+        double faqTotalTfidf = 0;
+        for (Keyword key : faq) {
+            faqTotalTfidf += key.getTfidfvalue();
+            faqName.add(key.getName());
+        }
+
+        double result = 0;
+        for (Keyword key : q) {
+            if (faqName.contains(key.getName())) {
+                result += key.getTfidfvalue();
+            } else {
+                result -= key.getTfidfvalue();
             }
         }
-        if (hitCount > 0) {
-            double ratio = (double)(hitTextLen / faq.length() + hitTextLen / question.length()) / 2;
-            sim += (1 - sim) * hitCount / faqKeyWords.size() * ratio;
-        } else {
-            sim *= 0.8;
+
+        // normalization
+        if (result > faqTotalTfidf) {
+            result = faqTotalTfidf;
+        } else if (result < 0) {
+            result = 0;
+        }
+        // prevent NaN result
+        if (faqTotalTfidf <= 0) {
+            faqTotalTfidf = 1.0;
+        }
+        result = result / faqTotalTfidf;
+
+        return result;
+    }
+
+    /**
+     * bidirectional key word similarity,
+     * @param keys1 - keyword list 1
+     * @param keys2 - keyword list 2
+     * @return similarity result
+     */
+    private double duplexKeywordSim(List<Keyword> keys1, List<Keyword> keys2) {
+        List<String> keys1NameList = new ArrayList<>();
+        List<Double> keys1ValueList = new ArrayList<>();
+        List<String> keys2NameList = new ArrayList<>();
+        List<Double> keys2ValueList = new ArrayList<>();
+        for (Keyword key : keys1) {
+            keys1NameList.add(key.getName());
+            keys1ValueList.add(key.getTfidfvalue());
         }
 
-        // find missing faq keyword
-        Set<String> excludeSet = new HashSet<>(faqKeyWords);
-        excludeSet.removeAll(hitSet);
-        int misLen = 0;
-        for (String misKey : excludeSet) {
-            misLen += misKey.length();
-        }
-        double misRatio = missKeyRatio * misLen / faq.length();
-        if (misRatio > 0.5) {
-            misRatio = 0.5;
-        }
-        double misSim = 1 - sim;
-        if (misSim < 0.1) {
-            misSim = 0.1;
-        } else if (misSim > 0.4) {
-            misSim = 0.4;
-        }
-        if (sim > threshold / 100) {
-            sim -= misSim * misRatio;
+        for (Keyword key : keys2) {
+            keys2NameList.add(key.getName());
+            keys2ValueList.add(key.getTfidfvalue());
         }
 
-        return new Pair<>(hitCount, sim);
+        double result = 0.0;
+        double total = 0.0;
+        Pair<Double, Double> p = sumTfidf(keys1NameList, keys1ValueList, keys2NameList, result, total);
+        result = p.getKey();
+        total = p.getValue();
+
+        p = sumTfidf(keys2NameList, keys2ValueList, keys1NameList, result, total);
+        result = p.getKey();
+        total = p.getValue();
+
+        // normalization
+        if (total == 0) {
+            total = 1.0;
+        }
+        double min = (-2) * total;
+        result = (result - min) / (total - min);
+
+        return result;
+    }
+
+    private Pair<Double, Double> sumTfidf(List<String> l1, List<Double> d1, List<String> l2, Double result, Double total) {
+        for (int i = 0; i < l1.size(); i++) {
+            if (l2.contains(l1.get(i))) {
+                result += d1.get(i);
+            } else {
+                result -= 2 * d1.get(i);
+            }
+            total += d1.get(i);
+        }
+
+        return new Pair<>(result, total);
     }
 }
