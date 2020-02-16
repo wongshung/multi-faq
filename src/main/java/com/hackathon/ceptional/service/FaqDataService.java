@@ -1,5 +1,9 @@
 package com.hackathon.ceptional.service;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.hackathon.ceptional.config.Constants;
 import com.hackathon.ceptional.util.ExcelUtil;
 import com.hackathon.ceptional.util.HuToolUtil;
@@ -18,12 +22,16 @@ import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+
 import java.io.File;
+import java.net.URI;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.Map.Entry;
+
 import static java.util.stream.Collectors.toList;
 
 /**
@@ -50,9 +58,24 @@ public class FaqDataService {
     private ConcurrentHashMap<Integer, List<String> > faqMap = new ConcurrentHashMap<>();
 
     /**
-     * key word map, using tf-idf method
+     * map to store word frequency for faq, collect data from faq and its related questions
+     */
+    private ConcurrentHashMap<Integer, Map<String, Integer> > wordFreqMap = new ConcurrentHashMap<>();
+
+    /**
+     * key word map, using tf-idf method, for single sentence mode
      */
     private ConcurrentHashMap<String, List<Keyword> > keyWordMap = new ConcurrentHashMap<>();
+
+    /**
+     * key word map, using tf-idf method, for combine sentence mode
+     */
+    private ConcurrentHashMap<Integer, List<Keyword> > combineKeywordMap = new ConcurrentHashMap<>();
+
+    /**
+     * synonym map, to store synonyms for keywords
+     */
+    private ConcurrentHashMap<String, List<String> > synonymMap = new ConcurrentHashMap<>();
 
     private static final int SHEET_COUNT = 2;
 
@@ -62,7 +85,6 @@ public class FaqDataService {
     private ConcurrentHashMap<Integer, HashSet<Integer> > keyMap = new ConcurrentHashMap<>(Constants.THREAD_COUNT);
 
     private TFIDFAnalyzer tfidfAnalyzer = new TFIDFAnalyzer();
-    private static final int TOP_N = 5;
 
     private static final NumberFormat NF = NumberFormat.getInstance();
     private static final DecimalFormat DF = new DecimalFormat("0.00");
@@ -80,15 +102,52 @@ public class FaqDataService {
     @Value("${faq.sim.ratio}")
     private int simRatio = 3;
     @Value("${faq.segment.method}")
-    private String segmentMethod = "ikea";
+    private String segmentMethod = IKEA;
+    @Value("${faq.jaro.ratio}")
+    private int jaroRatio = 5;
+    @Value("${faq.jac.ratio}")
+    private int jacRatio = 3;
+    @Value("${faq.ed.ratio}")
+    private int edRatio = 2;
+
+    /**
+     * 0-single sentence mode, 1-combine sentence mode
+     */
+    @Value("${faq.tfidf.mode}")
+    private int tfidfMode = 0;
+
+    /**
+     * synonym mode, 1-enable synonym, 0-disable synonym
+     */
+    @Value("${faq.synonym.mode}")
+    private int synonymMode = 0;
+    /**
+     * synonym url
+     */
+    @Value("${faq.synonym.url}")
+    private String synonymUrl = "";
+
+    private final HttpService httpService = new HttpService();
 
     /**
      * faq adjustment parameters
      */
+    @Value("${faq.top.count}")
+    private int topCount = 5;
     @Value("${faq.threshold}")
-    private double threshold= 60.0;
+    private double threshold = 60.0;
+    @Value("${faq.freq.ratio}")
+    private double freqRatio = 0.4;
 
     private static final String EXCEL_2007 = "xlsx";
+
+    private static final String JIEBA = "jieba";
+    private static final String IKEA = "ikea";
+    private static final String IKEA2 = "ikea2";
+    private static final String HANLP = "hanlp";
+    private static final String CHN = "chn";
+
+    private int iKeaMode = 1;
 
     /**
      * init data from provided excel, now only supports 2007 format and the file content must be correct
@@ -121,7 +180,75 @@ public class FaqDataService {
         // init keyMap
         initKeyMap();
 
-        log.info("InitData done.");
+        // init word frequency map
+        initWordFreqMap();
+
+        // init synonym map
+        initSynonymMap();
+
+        // set iKeaMode
+        if (segmentMethod.equals(IKEA2)) {
+            iKeaMode = 2;
+        }
+
+        log.info("InitData done. Now config: segmentMethod-{}, simMethod-{}, tfidfRatio-{}, freqRatio-{}, " +
+                        "jaroRatio-{}, tfidfMode-{}, topN-{}, synonymMode-{}",
+                segmentMethod, simMethod, tfidfRatio, freqRatio, jaroRatio, tfidfMode, topCount, synonymMode);
+    }
+
+    private void initSynonymMap() {
+        if (synonymMode == 1) {
+            // need to init synonym map
+            HashSet<String> keywordSet = new HashSet<>();
+            if (tfidfMode == 0) {
+                // single sentence mode
+                keyWordMap.forEach((k, v) ->
+                        v.forEach(keyword -> keywordSet.add(keyword.getName())));
+            } else if (tfidfMode == 1) {
+                // combine sentence mode
+                combineKeywordMap.forEach((k, v) ->
+                        v.forEach(keyword -> keywordSet.add(keyword.getName())));
+            }
+
+            keywordSet.forEach(s -> {
+                List<String> synonymList = getSynonyms(s);
+                synonymMap.put(s, synonymList);
+            });
+        }
+    }
+
+    public List<String> getSynonyms(String s) {
+        String getSynonymUrl = synonymUrl.concat(s);
+        String getResult = httpService.doGet(URI.create(getSynonymUrl));
+        JsonObject jsonObject = JsonParser.parseString(getResult).getAsJsonObject();
+        List<String> resultList = new ArrayList<>();
+        if (jsonObject.has("word")) {
+            JsonArray jArray = jsonObject.get("word").getAsJsonArray();
+            int count = 0;
+            for (JsonElement je : jArray) {
+                resultList.add(je.getAsString());
+                count++;
+                if (count >= topCount) {
+                    break;
+                }
+            }
+        }
+        return resultList;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void initWordFreqMap() {
+        for (int i = 0; i < faqMap.size(); i++) {
+            List<String> material = faqMap.get(i);
+            Map<String, Integer> finalMap = new HashMap<>(16);
+            for (String s : material) {
+                Map<String, Integer> wordMap = HuToolUtil.getWordFreqMap(s);
+                finalMap = HuToolUtil.mergeMap(wordMap, finalMap);
+            }
+            finalMap = HuToolUtil.sortMapByValue(finalMap, 0);
+            finalMap = HuToolUtil.subMap(finalMap, 10);
+            wordFreqMap.put(i, finalMap);
+        }
     }
 
     private void initKeyMap() {
@@ -138,12 +265,35 @@ public class FaqDataService {
     }
 
     private void setKeyWordMap() {
-        faqMap.forEach((k, v) ->
-            v.forEach(s -> {
-                List<Keyword> faqKeyWords = tfidfAnalyzer.analyze(s, TOP_N);
-                keyWordMap.put(s, faqKeyWords);
-            })
-        );
+        if (tfidfMode == 0) {
+            // single sentence mode
+            faqMap.forEach((k, v) ->
+                    v.forEach(s -> {
+                        List<Keyword> faqKeyWords;
+                        if (segmentMethod.equals(IKEA) || segmentMethod.equals(IKEA2)) {
+                            faqKeyWords = tfidfAnalyzer.analyzeEx(s, topCount, iKeaMode);
+                        } else {
+                            faqKeyWords = tfidfAnalyzer.analyze(s, topCount);
+                        }
+                        keyWordMap.put(s, faqKeyWords);
+                    })
+            );
+        } else if (tfidfMode == 1) {
+            // combine sentence mode
+            faqMap.forEach((k, v) -> {
+                String combineStr = "";
+                for (String s : v) {
+                    combineStr = combineStr.concat("|").concat(s);
+                }
+                List<Keyword> combineKeyWords;
+                if (segmentMethod.equals(IKEA) || segmentMethod.equals(IKEA2)) {
+                    combineKeyWords = tfidfAnalyzer.analyzeEx(combineStr, topCount, iKeaMode);
+                } else {
+                    combineKeyWords = tfidfAnalyzer.analyze(combineStr, topCount);
+                }
+                combineKeywordMap.put(k, combineKeyWords);
+            });
+        }
     }
 
     private void readFaqAndAnswer(XSSFSheet sheet) {
@@ -245,7 +395,13 @@ public class FaqDataService {
     }
 
     List<Keyword> getKeywords(String text) {
-        return tfidfAnalyzer.analyze(text, TOP_N);
+        List<Keyword> keys;
+        if (segmentMethod.equals(IKEA) || segmentMethod.equals(IKEA2)) {
+            keys = tfidfAnalyzer.analyzeEx(text, topCount, iKeaMode);
+        } else {
+            keys = tfidfAnalyzer.analyze(text, topCount);
+        }
+        return keys;
     }
 
     /**
@@ -256,7 +412,7 @@ public class FaqDataService {
      * @param map - result map
      */
     void calcSimilarity(String question, List<Keyword> qKeyWord, int hash,
-                               CountDownLatch counter, ConcurrentHashMap<Integer, Double> map) {
+                        CountDownLatch counter, ConcurrentHashMap<Integer, Double> map) {
         log.debug("calcSimilarity running on thread: {}, question: {}, hash: {}, result count: {}",
                 Thread.currentThread().getName(), question, hash, map.size());
 
@@ -264,6 +420,7 @@ public class FaqDataService {
         int finalKey = -1;
         String finalSimInfo = "";
         String matchFaq = "";
+        int finalFreqCount = 0;
         HashSet<Integer> keys = keyMap.get(hash);
         for (Integer i : keys) {
             List<String> faqs = faqMap.get(i);
@@ -271,7 +428,7 @@ public class FaqDataService {
             String sectionResultFaq = "";
             String sectionSimInfo = "";
             for (String s : faqs) {
-                Pair<String, Double> simResult = similarityCalc(question, qKeyWord, s);
+                Pair<String, Double> simResult = similarityCalc(i, question, qKeyWord, s);
                 if (simResult.getValue() > sectionHighSim) {
                     sectionHighSim = simResult.getValue();
                     sectionResultFaq = s;
@@ -282,12 +439,16 @@ public class FaqDataService {
                     break;
                 }
             }
+            // compare with frequency map
+            int freqCount = handleWordFreq(i, question);
+            sectionHighSim += (double)freqCount/10 * freqRatio * sectionHighSim;
 
             if (sectionHighSim > finalSim) {
-                finalSim = sectionHighSim;
+                finalSim = sectionHighSim > 1 ? 1 : sectionHighSim;
                 finalKey = i;
                 matchFaq = sectionResultFaq;
                 finalSimInfo = sectionSimInfo;
+                finalFreqCount = freqCount;
             }
             if (finalSim > 0.95) {
                 // very high similarity, also end this loop
@@ -297,43 +458,82 @@ public class FaqDataService {
 
         counter.countDown();
         map.put(finalKey, finalSim);
-        log.debug("calcSimilarity done on thread: {}, similarity: {}, sim-tf: {}, " +
-                        "matched key&sentence: {} - {}, now result count: {}",
-                Thread.currentThread().getName(), DF.format(finalSim), finalSimInfo, finalKey, matchFaq, map.size());
+        log.debug("calcSimilarity done on thread: {}, similarity: {}, sim-tf: {}, freqCount: {}," +
+                        " matched key&q: {} - {}, now result count: {}",
+                Thread.currentThread().getName(), DF.format(finalSim), finalSimInfo, finalFreqCount,
+                finalKey, matchFaq, map.size());
     }
 
-    private Pair<String, Double> similarityCalc(String question, List<Keyword> qKeyWord, String faq) {
-        double sim = 0;
+    @SuppressWarnings("unchecked")
+    private int handleWordFreq(int key, String question) {
+        Map<String, Integer> freqMap = wordFreqMap.get(key);
+        Map<String, Integer> questionMap = HuToolUtil.getWordFreqMap(question);
+        questionMap = HuToolUtil.getIntersectionSetByGuava(freqMap, questionMap);
+        int total = 0;
+        for (Entry<String, Integer> e : questionMap.entrySet()) {
+            total += e.getValue();
+        }
+
+        return total;
+    }
+
+    private Pair<String, Double> similarityCalc(int key, String question, List<Keyword> qKeyWord, String faq) {
+        double sim;
+
+        if (synonymMode == 1) {
+            // check if question could be adjusted
+            for (Keyword keyword : qKeyWord) {
+                if (!faq.contains(keyword.getName())) {
+                    List<String> keywordSynonym = synonymMap.get(keyword.getName());
+                    for (String s : keywordSynonym) {
+                        if (faq.contains(s)) {
+                            // replaced and break
+                            question = question.replaceAll(keyword.getName(), s);
+                            break;
+                        }
+                    }
+                }
+            }
+            log.debug("q replaced on thread: {}, new question: {}", Thread.currentThread().getName(), question);
+        }
+
         if ("debatty".equals(simMethod)) {
             // use previous method
             double sim1 = SimilarityUtil.jaroSimilarity(question, faq);
             double sim2 = SimilarityUtil.sim(question, faq);
             double sim3 = SimilarityUtil.jacCardSimilarity(question, faq);
-            sim = (5 * sim1 + 3 * sim2 + 2 * sim3) / 10;
+            sim = (jaroRatio * sim1 + edRatio * sim2 + jacRatio * sim3) / 10;
         } else {
             // use hutool method
             Vector<String> v1 = null;
             Vector<String> v2 = null;
-            if (segmentMethod.equals("ikea")) {
+            if (IKEA.equals(segmentMethod)) {
                 v1 = HuToolUtil.participleIk(question);
                 v2 = HuToolUtil.participleIk(faq);
-            } else if (segmentMethod.equals("hanlp")) {
+            } else if (HANLP.equals(segmentMethod)) {
                 v1 = HuToolUtil.participleHanLP(question);
                 v2 = HuToolUtil.participleHanLP(faq);
-            } else if (segmentMethod.equals("jieba")) {
+            } else if (JIEBA.equals(segmentMethod)) {
                 v1 = HuToolUtil.participleJieBa(question);
                 v2 = HuToolUtil.participleJieBa(faq);
-            } else if (segmentMethod.equals("chn")) {
+            } else if (CHN.equals(segmentMethod)) {
                 v1 = HuToolUtil.participleChinese(question);
                 v2 = HuToolUtil.participleChinese(faq);
             }
             sim = HuToolUtil.getSimilarity(v1, v2);
         }
 
-        String simInfo = "";
+        String simInfo;
         // algorithm != 0, need to use tfidf
         if (algorithm != 0) {
-            List<Keyword> faqKeyWords = keyWordMap.get(faq);
+            List<Keyword> faqKeyWords;
+            // get keywords by tfidf mode
+            if (tfidfMode == 0) {
+                faqKeyWords = keyWordMap.get(faq);
+            } else {
+                faqKeyWords = combineKeywordMap.get(key);
+            }
+
             // calculate tfidf
             double tfidfSim = duplexKeywordSim(faqKeyWords, qKeyWord);
             List<String> qKeys = qKeyWord.parallelStream().map(Keyword::getName).collect(toList());
@@ -375,9 +575,8 @@ public class FaqDataService {
      * @return normalized result
      */
     double faqTfidfSim(String faq, String q) {
-        List<Keyword> faqKeys = tfidfAnalyzer.analyze(faq, TOP_N);
-        List<Keyword> qKeys = tfidfAnalyzer.analyze(q, TOP_N);
-
+        List<Keyword> faqKeys = getKeywords(faq);
+        List<Keyword> qKeys = getKeywords(q);
         return simplexKeywordSim(faqKeys, qKeys);
     }
 
@@ -388,9 +587,8 @@ public class FaqDataService {
      * @return normalized result
      */
     double tfidfSim(String s1, String s2) {
-        List<Keyword> keys1 = tfidfAnalyzer.analyze(s1, TOP_N);
-        List<Keyword> keys2 = tfidfAnalyzer.analyze(s2, TOP_N);
-
+        List<Keyword> keys1 = getKeywords(s1);
+        List<Keyword> keys2 = getKeywords(s2);
         return duplexKeywordSim(keys1, keys2);
     }
 

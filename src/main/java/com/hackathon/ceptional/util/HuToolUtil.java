@@ -7,16 +7,20 @@ import cn.hutool.extra.tokenizer.TokenizerUtil;
 import cn.hutool.extra.tokenizer.Word;
 import cn.hutool.extra.tokenizer.engine.hanlp.HanLPEngine;
 import cn.hutool.extra.tokenizer.engine.jieba.JiebaEngine;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import com.hankcs.hanlp.HanLP;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.wltea.analyzer.core.IKSegmenter;
 import org.wltea.analyzer.core.Lexeme;
 
+import javax.util.streamex.EntryStream;
 import java.io.IOException;
 import java.io.StringReader;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.Map.Entry;
 
 /**
  * hu tool util for word segment and similarity
@@ -45,16 +49,14 @@ public class HuToolUtil {
         try {
             StringReader reader = new StringReader(text);
             //当为true时，分词器进行最大词长切分
-            IKSegmenter ik = new IKSegmenter(reader, true);
-            Lexeme lexeme = null;
+            IKSegmenter ik = new IKSegmenter(reader, false);
+            Lexeme lexeme;
             while ((lexeme = ik.next()) != null) {
                 str.add(lexeme.getLexemeText());
             }
             if (str.size() == 0) {
                 return null;
             }
-            //分词后
-            //log.info("str分词后:" + str);
         } catch (IOException e) {
             log.error(e.getMessage());
         }
@@ -113,15 +115,15 @@ public class HuToolUtil {
      * @return similarity value
      */
     public static double getSimilarity(Vector<String> TOne, Vector<String> TTwo) {
-        int sizeOne = 0, sizeTwo = 0;
+        int sizeOne, sizeTwo;
         if (TOne != null && (sizeOne = TOne.size()) > 0 && TTwo != null && (sizeTwo = TTwo.size()) > 0) {
             Map<String, double[]> T = new HashMap<>();
             //T1和T2的并集T
-            String index = null;
+            String index;
             for (int i = 0; i < sizeOne; i++) {
                 index = TOne.get(i);
                 if (index != null) {
-                    double[] c = T.get(index);
+                    double[] c;
                     c = new double[2];
                     //T1的语义分数Ci
                     c[0] = 1;
@@ -228,5 +230,89 @@ public class HuToolUtil {
                 ".<>/?~！@#￥……&*（）——|{}【】‘；：”“'。，、？ ").contains(s)).collect(Collectors.toList());
     }
 
+    /**
+     * IKSegmenter分词计算文章关键字
+     * @param text - input text
+     * @return map
+     */
+    public static Map getWordFreqMap(String text) {
+        Map<String, Integer> wordMap = new HashMap<>(16);
+        IKSegmenter ikSegmenter = new IKSegmenter(new StringReader(text), false);
+        Lexeme lexeme;
+        try {
+            while ((lexeme = ikSegmenter.next()) != null) {
+                if (lexeme.getLexemeText().length() > 1) {
+                    if (wordMap.containsKey(lexeme.getLexemeText())) {
+                        wordMap.put(lexeme.getLexemeText(), wordMap.get(lexeme.getLexemeText()) + 1);
+                    } else {
+                        wordMap.put(lexeme.getLexemeText(), 1);
+                    }
+                }
+            }
+        } catch (IOException ex) {
+            log.error(ex.getMessage());
+        }
 
+        return wordMap;
+    }
+
+    @SuppressWarnings("unchecked")
+    public static Map mergeMap(Map<String, Integer> map1, Map<String, Integer> map2) {
+        return EntryStream.of(map1).append(EntryStream.of(map2)).toMap((e1, e2) -> (e1 + e2));
+    }
+
+    /**
+     * Map 按value值从大到小排序
+     * @param map - input map
+     * @param flag - order flag, 1 - asc, 0 - desc
+     * @return sorted map
+     */
+    public static Map<String, Integer> sortMapByValue(Map<String, Integer> map, int flag) {
+        Map<String, Integer> sortedMap = new LinkedHashMap<>();
+        if (flag == 1) {
+            map.entrySet().stream().sorted(Comparator.comparing(Entry::getValue))
+                    .forEach(entry -> sortedMap.put(entry.getKey(), entry.getValue()));
+        } else {
+            map.entrySet().stream().sorted((o1, o2) -> o2.getValue().compareTo(o1.getValue()))
+                    .forEach(entry -> sortedMap.put(entry.getKey(), entry.getValue()));
+        }
+
+        return sortedMap;
+    }
+
+    /**
+     * 取出sorted map前n个元素
+     * @param map - input sorted map, must be sorted
+     * @param n - number
+     * @return sub map
+     */
+    public static Map<String, Integer> subMap(Map<String, Integer> map, int n) {
+        List<Entry<String, Integer> > lists = new ArrayList<>(map.entrySet());
+        Map<String, Integer> subMap = new HashMap<>(n);
+        if (lists.size() > n) {
+            lists.subList(0, n).forEach(x -> subMap.put(x.getKey(), x.getValue()));
+        } else {
+            lists.forEach(x -> subMap.put(x.getKey(), x.getValue()));
+        }
+
+        return subMap;
+    }
+
+    /**
+     * 取Map集合的交集（String, Integer）
+     *
+     * @param map1 大集合
+     * @param map2 小集合
+     * @return 两个集合的交集, 并且value相加
+     */
+    public static Map<String, Integer> getIntersectionSetByGuava(Map<String, Integer> map1, Map<String, Integer> map2) {
+        Set<String> bigMapKey = map1.keySet();
+        Set<String> smallMapKey = map2.keySet();
+        Set<String> differenceSet = Sets.intersection(bigMapKey, smallMapKey);
+        Map<String, Integer> result = Maps.newHashMap();
+        for (String key : differenceSet) {
+            result.put(key, map1.get(key) + map2.get(key));
+        }
+        return result;
+    }
 }

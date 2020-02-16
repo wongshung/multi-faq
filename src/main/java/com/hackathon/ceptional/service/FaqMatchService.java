@@ -38,6 +38,9 @@ public class FaqMatchService {
     @Value("${faq.threshold}")
     private double threshold = 60.0;
 
+    @Value("${faq.top.count}")
+    private int topCount = 5;
+
     private FaqDataService faqDataService;
     @Autowired
     private void setDataInitService(FaqDataService service) {
@@ -133,10 +136,9 @@ public class FaqMatchService {
                 rawSim, chineseSim, hanlpSim, ikSim, jiebaSim);
     }
 
-    public String jiebaTfidf(String s) {
-        int limit = 5;
+    public String jiebaTfidf(String s, int mode) {
         TFIDFAnalyzer tfidfAnalyzer=new TFIDFAnalyzer();
-        List<Keyword> list=tfidfAnalyzer.analyze(s, limit);
+        List<Keyword> list=tfidfAnalyzer.analyzeEx(s, topCount, mode);
         StringBuilder sb = new StringBuilder();
         for (Keyword word:list) {
             sb.append(word.getName());

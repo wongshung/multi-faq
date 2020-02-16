@@ -21,10 +21,10 @@ import java.util.List;
 class JiebaTest {
     @Test
     void testWordExtract() {
-        String content="5分钟内未成功出票，会赔付吗？怎么赔付？";
+        String content="汽车上可以拿几个行李箱";
         int topN = 5;
         TFIDFAnalyzer tfidfAnalyzer=new TFIDFAnalyzer();
-        List<Keyword> list=tfidfAnalyzer.analyze(content,topN);
+        List<Keyword> list=tfidfAnalyzer.analyzeEx(content, topN, 1);
         for(Keyword word:list)
             System.out.println(word.getName()+":"+word.getTfidfvalue()+",");
 
