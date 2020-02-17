@@ -82,6 +82,9 @@ public class FaqMatchService {
         ResultModel result = new ResultModel();
         List<Answer> resultAnswers = new ArrayList<>();
         result.setStatus(0);
+        if (highestScore > 1) {
+            highestScore = 1;
+        }
         // adjust to hundred scale
         highestScore *= 100;
         // only precise, so set up a base score above threshold

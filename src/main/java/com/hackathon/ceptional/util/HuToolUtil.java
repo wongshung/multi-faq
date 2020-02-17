@@ -233,11 +233,19 @@ public class HuToolUtil {
     /**
      * IKSegmenter分词计算文章关键字
      * @param text - input text
+     * @param mode - segement mode, 0-最小拆分，1-智能合并
      * @return map
      */
-    public static Map getWordFreqMap(String text) {
+    public static Map getWordFreqMap(String text, int mode) {
         Map<String, Integer> wordMap = new HashMap<>(16);
-        IKSegmenter ikSegmenter = new IKSegmenter(new StringReader(text), false);
+        StringReader reader = new StringReader(text);
+        IKSegmenter ikSegmenter;
+        if (mode == 1) {
+            ikSegmenter = new IKSegmenter(reader, true);
+        } else {
+            ikSegmenter = new IKSegmenter(reader, false);
+        }
+
         Lexeme lexeme;
         try {
             while ((lexeme = ikSegmenter.next()) != null) {

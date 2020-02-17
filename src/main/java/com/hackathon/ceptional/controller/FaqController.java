@@ -96,6 +96,24 @@ public class FaqController {
         return CcsResponse.success(result);
     }
 
+    @PostMapping("/normalizeTfidfSim")
+    public Object normalizeTfidfSim(@RequestBody String request) {
+        log.info("normalizeTfidfSim request, param: {}", request);
+        String text1 = "";
+        String text2 = "";
+        JsonObject jsonObject = JsonParser.parseString(request).getAsJsonObject();
+        if (jsonObject.has("text1")) {
+            text1 = jsonObject.get("text1").getAsString();
+        }
+        if (jsonObject.has("text2")) {
+            text2 = jsonObject.get("text2").getAsString();
+        }
+
+        double result = faqDataService.normalizedTfidfSim(text1, text2);
+        log.info("normalizeTfidfSim request success, result: {}", result);
+        return CcsResponse.success(result);
+    }
+
     @PostMapping("/wordSegment")
     public Object wordSegment(@RequestBody String request) {
         log.info("wordSegment request, param: {}", request);

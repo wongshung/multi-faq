@@ -73,8 +73,8 @@ class SimilarityTest {
         Vector<String> v7 = HuToolUtil.participleJieBa(s1);
         Vector<String> v8 = HuToolUtil.participleJieBa(s2);
 
-        Map<String, Integer> wordMap1 = HuToolUtil.getWordFreqMap(s1);
-        Map<String, Integer> wordMap2 = HuToolUtil.getWordFreqMap(s2);
+        Map<String, Integer> wordMap1 = HuToolUtil.getWordFreqMap(s1, 0);
+        Map<String, Integer> wordMap2 = HuToolUtil.getWordFreqMap(s2, 0);
         //wordMap2 = HuToolUtil.mergeMap(wordMap1, wordMap2);
         wordMap2 = HuToolUtil.getIntersectionSetByGuava(wordMap1, wordMap2);
 

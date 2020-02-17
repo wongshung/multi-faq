@@ -31,6 +31,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.Map.Entry;
+import java.util.stream.Collectors;
 
 import static java.util.stream.Collectors.toList;
 
@@ -141,12 +142,19 @@ public class FaqDataService {
 
     private static final String EXCEL_2007 = "xlsx";
 
+    /**
+     * word segment methods
+     */
     private static final String JIEBA = "jieba";
     private static final String IKEA = "ikea";
     private static final String IKEA2 = "ikea2";
     private static final String HANLP = "hanlp";
     private static final String CHN = "chn";
+    private static final String COMBO = "combo";
 
+    /**
+     * ikea分词模式，1-最小细分，2-智能合并模式
+     */
     private int iKeaMode = 1;
 
     /**
@@ -174,6 +182,13 @@ public class FaqDataService {
         sheet = workBook.getSheetAt(1);
         readRelateQuestion(sheet);
 
+        // set iKeaMode
+        if (segmentMethod.equals(IKEA2)) {
+            iKeaMode = 2;
+        } else if (COMBO.equals(segmentMethod)) {
+            iKeaMode = 4;
+        }
+
         // set keyWord Map
         setKeyWordMap();
 
@@ -185,11 +200,6 @@ public class FaqDataService {
 
         // init synonym map
         initSynonymMap();
-
-        // set iKeaMode
-        if (segmentMethod.equals(IKEA2)) {
-            iKeaMode = 2;
-        }
 
         log.info("InitData done. Now config: segmentMethod-{}, simMethod-{}, tfidfRatio-{}, freqRatio-{}, " +
                         "jaroRatio-{}, tfidfMode-{}, topN-{}, synonymMode-{}",
@@ -242,11 +252,17 @@ public class FaqDataService {
             List<String> material = faqMap.get(i);
             Map<String, Integer> finalMap = new HashMap<>(16);
             for (String s : material) {
-                Map<String, Integer> wordMap = HuToolUtil.getWordFreqMap(s);
+                Map<String, Integer> wordMap;
+                if (segmentMethod.equals(IKEA) || segmentMethod.equals(COMBO)) {
+                    wordMap = HuToolUtil.getWordFreqMap(s, 0);
+                } else {
+                    wordMap = HuToolUtil.getWordFreqMap(s, 1);
+                }
+
                 finalMap = HuToolUtil.mergeMap(wordMap, finalMap);
             }
             finalMap = HuToolUtil.sortMapByValue(finalMap, 0);
-            finalMap = HuToolUtil.subMap(finalMap, 10);
+            finalMap = HuToolUtil.subMap(finalMap, 2 * topCount);
             wordFreqMap.put(i, finalMap);
         }
     }
@@ -270,7 +286,7 @@ public class FaqDataService {
             faqMap.forEach((k, v) ->
                     v.forEach(s -> {
                         List<Keyword> faqKeyWords;
-                        if (segmentMethod.equals(IKEA) || segmentMethod.equals(IKEA2)) {
+                        if (segmentMethod.equals(IKEA) || segmentMethod.equals(IKEA2) || segmentMethod.equals(COMBO)) {
                             faqKeyWords = tfidfAnalyzer.analyzeEx(s, topCount, iKeaMode);
                         } else {
                             faqKeyWords = tfidfAnalyzer.analyze(s, topCount);
@@ -286,7 +302,7 @@ public class FaqDataService {
                     combineStr = combineStr.concat("|").concat(s);
                 }
                 List<Keyword> combineKeyWords;
-                if (segmentMethod.equals(IKEA) || segmentMethod.equals(IKEA2)) {
+                if (segmentMethod.equals(IKEA) || segmentMethod.equals(IKEA2) || segmentMethod.equals(COMBO)) {
                     combineKeyWords = tfidfAnalyzer.analyzeEx(combineStr, topCount, iKeaMode);
                 } else {
                     combineKeyWords = tfidfAnalyzer.analyze(combineStr, topCount);
@@ -396,7 +412,7 @@ public class FaqDataService {
 
     List<Keyword> getKeywords(String text) {
         List<Keyword> keys;
-        if (segmentMethod.equals(IKEA) || segmentMethod.equals(IKEA2)) {
+        if (segmentMethod.equals(IKEA) || segmentMethod.equals(IKEA2) || segmentMethod.equals(COMBO)) {
             keys = tfidfAnalyzer.analyzeEx(text, topCount, iKeaMode);
         } else {
             keys = tfidfAnalyzer.analyze(text, topCount);
@@ -444,7 +460,7 @@ public class FaqDataService {
             sectionHighSim += (double)freqCount/10 * freqRatio * sectionHighSim;
 
             if (sectionHighSim > finalSim) {
-                finalSim = sectionHighSim > 1 ? 1 : sectionHighSim;
+                finalSim = sectionHighSim;
                 finalKey = i;
                 matchFaq = sectionResultFaq;
                 finalSimInfo = sectionSimInfo;
@@ -467,7 +483,12 @@ public class FaqDataService {
     @SuppressWarnings("unchecked")
     private int handleWordFreq(int key, String question) {
         Map<String, Integer> freqMap = wordFreqMap.get(key);
-        Map<String, Integer> questionMap = HuToolUtil.getWordFreqMap(question);
+        Map<String, Integer> questionMap;
+        if (segmentMethod.equals(IKEA) || segmentMethod.equals(COMBO)) {
+            questionMap = HuToolUtil.getWordFreqMap(question, 0);
+        } else {
+            questionMap = HuToolUtil.getWordFreqMap(question, 1);
+        }
         questionMap = HuToolUtil.getIntersectionSetByGuava(freqMap, questionMap);
         int total = 0;
         for (Entry<String, Integer> e : questionMap.entrySet()) {
@@ -480,21 +501,35 @@ public class FaqDataService {
     private Pair<String, Double> similarityCalc(int key, String question, List<Keyword> qKeyWord, String faq) {
         double sim;
 
+        List<Keyword> faqKeyWords;
+        // get keywords by tfidf mode
+        if (tfidfMode == 0) {
+            faqKeyWords = keyWordMap.get(faq);
+        } else {
+            faqKeyWords = combineKeywordMap.get(key);
+        }
         if (synonymMode == 1) {
             // check if question could be adjusted
+            String oldQuestion = question;
+            boolean bReplaced = false;
             for (Keyword keyword : qKeyWord) {
                 if (!faq.contains(keyword.getName())) {
-                    List<String> keywordSynonym = synonymMap.get(keyword.getName());
-                    for (String s : keywordSynonym) {
-                        if (faq.contains(s)) {
-                            // replaced and break
-                            question = question.replaceAll(keyword.getName(), s);
+                    for (Keyword faqKeyword : faqKeyWords) {
+                        List<String> faqKeywordSynonym = synonymMap.get(faqKeyword.getName());
+                        if (faqKeywordSynonym.contains(keyword.getName())) {
+                            // replace question
+                            question = question.replaceAll(keyword.getName(), faqKeyword.getName());
+                            bReplaced = true;
                             break;
                         }
                     }
                 }
             }
-            log.debug("q replaced on thread: {}, new question: {}", Thread.currentThread().getName(), question);
+            if (bReplaced) {
+                log.debug("q replaced on thread: {}, old q: {}, new q: {}", Thread.currentThread().getName(),
+                        oldQuestion, question);
+            }
+
         }
 
         if ("debatty".equals(simMethod)) {
@@ -507,7 +542,7 @@ public class FaqDataService {
             // use hutool method
             Vector<String> v1 = null;
             Vector<String> v2 = null;
-            if (IKEA.equals(segmentMethod)) {
+            if (IKEA.equals(segmentMethod) || IKEA2.equals(segmentMethod)) {
                 v1 = HuToolUtil.participleIk(question);
                 v2 = HuToolUtil.participleIk(faq);
             } else if (HANLP.equals(segmentMethod)) {
@@ -526,16 +561,8 @@ public class FaqDataService {
         String simInfo;
         // algorithm != 0, need to use tfidf
         if (algorithm != 0) {
-            List<Keyword> faqKeyWords;
-            // get keywords by tfidf mode
-            if (tfidfMode == 0) {
-                faqKeyWords = keyWordMap.get(faq);
-            } else {
-                faqKeyWords = combineKeywordMap.get(key);
-            }
-
             // calculate tfidf
-            double tfidfSim = duplexKeywordSim(faqKeyWords, qKeyWord);
+            double tfidfSim = normalizedKeywordSim(faqKeyWords, qKeyWord);
             List<String> qKeys = qKeyWord.parallelStream().map(Keyword::getName).collect(toList());
             List<String> faqKeys = faqKeyWords.parallelStream().map(Keyword::getName).collect(toList());
             long hitCount = faqKeys.parallelStream().filter(item -> qKeys.contains(item)).count();
@@ -581,15 +608,27 @@ public class FaqDataService {
     }
 
     /**
-     * normal usage of tfidf like symmetric similarity caculation
+     * symmetric tfidf similarity calculation
      * @param s1 - text 1
      * @param s2 - text 2
-     * @return normalized result
+     * @return normalized tfidf result
      */
     double tfidfSim(String s1, String s2) {
         List<Keyword> keys1 = getKeywords(s1);
         List<Keyword> keys2 = getKeywords(s2);
         return duplexKeywordSim(keys1, keys2);
+    }
+
+    /**
+     * tfidf sim after normalized and remove duplicated info
+     * @param s1 - text1
+     * @param s2 - text2
+     * @return result sim
+     */
+    public double normalizedTfidfSim(String s1, String s2) {
+        List<Keyword> keys1 = getKeywords(s1);
+        List<Keyword> keys2 = getKeywords(s2);
+        return normalizedKeywordSim(keys1, keys2);
     }
 
     /**
@@ -628,6 +667,72 @@ public class FaqDataService {
         result = result / faqTotalTfidf;
 
         return result;
+    }
+
+    /**
+     * bidirectional & normalized key word similarity,
+     * @param keys1 - keyword list 1
+     * @param keys2 - keyword list 2
+     * @return similarity result
+     */
+    private double normalizedKeywordSim(List<Keyword> keys1, List<Keyword> keys2) {
+        Map<String, Double> keyMap1 = keys1.stream().collect(Collectors.toMap(Keyword::getName, Keyword::getTfidfvalue));
+        Map<String, Double> keyMap2 = keys2.stream().collect(Collectors.toMap(Keyword::getName, Keyword::getTfidfvalue));
+
+        List<String> removeList1 = getRemoveList(keyMap1, keyMap2);
+        List<String> removeList2 = getRemoveList(keyMap2, keyMap1);
+
+        removeList1.forEach(keyMap1::remove);
+        removeList2.forEach(keyMap2::remove);
+
+        double total1 = 0;
+        double total2 = 0;
+        double tfidf1 = 0;
+        double tfidf2 = 0;
+        Set<Entry<String, Double>> set1 = keyMap1.entrySet();
+        for (Entry<String, Double> entry : set1) {
+            total1 += entry.getValue();
+            if (keyMap2.containsKey(entry.getKey())) {
+                tfidf1 += entry.getValue();
+            }
+        }
+        Set<Entry<String, Double>> set2 = keyMap2.entrySet();
+        for (Entry<String, Double> entry : set2) {
+            total2 += entry.getValue();
+            if (keyMap1.containsKey(entry.getKey())) {
+                tfidf2 += entry.getValue();
+            }
+        }
+        // normalized calculation
+        total1 = (total1 == 0 ? 1 : total1);
+        total2 = (total2 == 0 ? 1 : total2);
+        return (tfidf1 / total1 + tfidf2 / total2) / 2;
+    }
+
+    private List<String> getRemoveList(Map<String, Double> keyMap1, Map<String, Double> keyMap2) {
+        List<String> toRemoveList1 = new ArrayList<>();
+        Set<Entry<String, Double>> set1 = keyMap1.entrySet();
+        for (Entry<String, Double> entry : set1) {
+            String s = entry.getKey();
+            for (Entry<String, Double> entry2 : set1) {
+                if (entry2.getKey().equals(s)) {
+                    continue;
+                }
+                if (entry2.getKey().contains(s)) {
+                    // longer key found
+                    if (keyMap2.containsKey(entry2.getKey())) {
+                        toRemoveList1.add(s);
+                    } else if (keyMap2.containsKey(s)){
+                        toRemoveList1.add(entry2.getKey());
+                    } else {
+                        // no related, remove shorter one
+                        toRemoveList1.add(s);
+                    }
+                }
+            }
+        }
+
+        return toRemoveList1;
     }
 
     /**
