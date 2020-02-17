@@ -139,6 +139,8 @@ public class FaqDataService {
     private double threshold = 60.0;
     @Value("${faq.freq.ratio}")
     private double freqRatio = 0.4;
+    @Value("${faq.exclude.threshold}")
+    private double excludeThreshold = 0.85;
 
     private static final String EXCEL_2007 = "xlsx";
 
@@ -581,7 +583,15 @@ public class FaqDataService {
                 simInfo = DF.format(sim) + " * " + simRatio + " & " + DF.format(tfidfSim) + " * " + tfRatio
                         + ", count: " + hitCount;
                 // final sim
-                sim = (sim * simRatio + tfidfSim * tfRatio) / 10;
+                // some sim very high, use that directly
+                boolean flag = (sim > excludeThreshold && tfidfSim > 0.1) || (tfidfSim > excludeThreshold && sim > 0.1);
+                if (flag) {
+                    log.debug("reach exlude threshold, sim: {}, tfidfSim: {}", sim, tfidfSim);
+                    sim = Math.max(sim, tfidfSim);
+                } else {
+                    sim = (sim * simRatio + tfidfSim * tfRatio) / 10;
+                }
+
             } else {
                 // only use tfidf similarity
                 sim = tfidfSim;
