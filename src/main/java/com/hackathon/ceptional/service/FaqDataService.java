@@ -31,6 +31,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.Map.Entry;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static java.util.stream.Collectors.toList;
@@ -90,6 +92,8 @@ public class FaqDataService {
     private static final NumberFormat NF = NumberFormat.getInstance();
     private static final DecimalFormat DF = new DecimalFormat("0.00");
     private static final String NUMERIC_SPLIT_COMMA = ",";
+    private Pattern symbolPattern = Pattern.compile("[`~☆★!@#$%^&*()+=|{}':;,\\[\\]》·.<>/?~！@#￥%……（）——+|{}【】‘；：”“’。，、？]");
+    private Pattern numPattern = Pattern.compile("^[-\\+]?[\\d]*$");
 
     /**
      * algorithm method & weight on calculation
@@ -226,25 +230,34 @@ public class FaqDataService {
                 List<String> synonymList = getSynonyms(s);
                 synonymMap.put(s, synonymList);
             });
+            log.info("init synonym map done!");
         }
     }
 
     public List<String> getSynonyms(String s) {
-        String getSynonymUrl = synonymUrl.concat(s);
-        String getResult = httpService.doGet(URI.create(getSynonymUrl));
-        JsonObject jsonObject = JsonParser.parseString(getResult).getAsJsonObject();
         List<String> resultList = new ArrayList<>();
-        if (jsonObject.has("word")) {
-            JsonArray jArray = jsonObject.get("word").getAsJsonArray();
-            int count = 0;
-            for (JsonElement je : jArray) {
-                resultList.add(je.getAsString());
-                count++;
-                if (count >= topCount) {
-                    break;
+        s = purge(s);
+        if (StringUtils.isNotBlank(s) && s.length() > 1 && !isInteger(s)) {
+            String getSynonymUrl = synonymUrl.concat(s);
+            try {
+                String getResult = httpService.doGet(URI.create(getSynonymUrl));
+                JsonObject jsonObject = JsonParser.parseString(getResult).getAsJsonObject();
+                if (jsonObject.has("word")) {
+                    JsonArray jArray = jsonObject.get("word").getAsJsonArray();
+                    int count = 0;
+                    for (JsonElement je : jArray) {
+                        resultList.add(je.getAsString());
+                        count++;
+                        if (count >= topCount) {
+                            break;
+                        }
+                    }
                 }
+            } catch (Exception ex) {
+                log.error("s={}, msg={}", s, ex);
             }
         }
+
         return resultList;
     }
 
@@ -344,9 +357,11 @@ public class FaqDataService {
                              */
                             answers.add(faq);
                             int key = answers.size() - 1;
+                            faq = faq.toUpperCase();
                             if (faqMap.containsKey(key)) {
                                 List<String> value = faqMap.get(key);
                                 if (!value.contains(faq)) {
+                                    // to upper case
                                     value.add(faq);
                                 }
                             } else {
@@ -379,6 +394,7 @@ public class FaqDataService {
             cell = row.getCell(1);
             if (cell != null && cell.getCellType() != CellType.BLANK) {
                 String faq = getCellText(cell);
+                faq = faq.toUpperCase();
                 for (List<String> faqs : faqMap.values()) {
                     if (faqs.contains(faq)) {
                         // faq found, now add related question
@@ -386,7 +402,8 @@ public class FaqDataService {
                         if (cell != null && cell.getCellType() != CellType.BLANK) {
                             String question = getCellText(cell);
                             if (StringUtils.isNotBlank(question)) {
-                                // valid question, add to faqMap
+                                // valid question, to uppercase and add to faqMap
+                                question = question.toUpperCase();
                                 faqs.add(question);
                             }
                         }
@@ -431,6 +448,7 @@ public class FaqDataService {
      */
     void calcSimilarity(String question, List<Keyword> qKeyWord, int hash,
                         CountDownLatch counter, ConcurrentHashMap<Integer, Double> map) {
+        question = question.toUpperCase();
         log.debug("calcSimilarity running on thread: {}, question: {}, hash: {}, result count: {}",
                 Thread.currentThread().getName(), question, hash, map.size());
 
@@ -612,6 +630,8 @@ public class FaqDataService {
      * @return normalized result
      */
     double faqTfidfSim(String faq, String q) {
+        faq = faq.toUpperCase();
+        q = q.toUpperCase();
         List<Keyword> faqKeys = getKeywords(faq);
         List<Keyword> qKeys = getKeywords(q);
         return simplexKeywordSim(faqKeys, qKeys);
@@ -624,6 +644,8 @@ public class FaqDataService {
      * @return normalized tfidf result
      */
     double tfidfSim(String s1, String s2) {
+        s1 = s1.toUpperCase();
+        s2 = s2.toUpperCase();
         List<Keyword> keys1 = getKeywords(s1);
         List<Keyword> keys2 = getKeywords(s2);
         return duplexKeywordSim(keys1, keys2);
@@ -636,6 +658,8 @@ public class FaqDataService {
      * @return result sim
      */
     public double normalizedTfidfSim(String s1, String s2) {
+        s1 = s1.toUpperCase();
+        s2 = s2.toUpperCase();
         List<Keyword> keys1 = getKeywords(s1);
         List<Keyword> keys2 = getKeywords(s2);
         return normalizedKeywordSim(keys1, keys2);
@@ -798,4 +822,25 @@ public class FaqDataService {
 
         return new Pair<>(result, total);
     }
+
+    private String purge(String s) {
+        // remove space
+        s = s.replaceAll(" ", "");
+        // match special characters
+        Matcher m = symbolPattern.matcher(s);
+        // remove special characters
+        s = m.replaceAll("").trim().replace(" ", "").replace("\\", "");
+        return s;
+    }
+
+
+    /**
+     * 判断是否为整数
+     * @param str 传入的字符串
+     * @return 是整数返回true,否则返回false
+     */
+    private boolean isInteger(String str) {
+        return numPattern.matcher(str).matches();
+    }
+
 }

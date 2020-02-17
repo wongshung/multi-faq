@@ -88,7 +88,7 @@ public class HttpService {
             log.error("", e);
         } finally {
             timer.stop();
-            log.info("cost time : [{}], request url : [{}]", timer.toString(), this.serivceURL);
+            log.info("cost time : [{}], request uri : [{}]", timer.toString(), uri);
         }
 
         return result;

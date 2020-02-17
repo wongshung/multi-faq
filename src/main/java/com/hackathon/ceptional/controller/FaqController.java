@@ -55,6 +55,7 @@ public class FaqController {
             return CcsResponse.error(RespMessage.REQUEST_ERROR);
         }
 
+        question = question.toUpperCase();
         ResultModel resultModel = faqMatchService.doMatch(question);
         log.info("match request success, result: {}", resultModel.toString());
         return CcsResponse.success(resultModel);
