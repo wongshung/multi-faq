@@ -475,20 +475,26 @@ public class FaqDataService {
                     break;
                 }
             }
-            // compare with frequency map
+            // frequency map
             int freqCount = handleWordFreq(i, question);
-            sectionHighSim += (double)freqCount/10 * freqRatio * sectionHighSim;
+            if(sectionHighSim >= 0.95) {
+                // very high similarity, break directly
+                finalSim = sectionHighSim;
+                finalKey = i;
+                matchFaq = sectionResultFaq;
+                finalSimInfo = sectionSimInfo;
+                finalFreqCount = freqCount;
+                break;
+            }
 
+            double adjustRatio = (double)(freqCount % 20) / 20;
+            sectionHighSim += (1-sectionHighSim) * adjustRatio * freqRatio * sectionHighSim;
             if (sectionHighSim > finalSim) {
                 finalSim = sectionHighSim;
                 finalKey = i;
                 matchFaq = sectionResultFaq;
                 finalSimInfo = sectionSimInfo;
                 finalFreqCount = freqCount;
-            }
-            if (finalSim > 0.95) {
-                // very high similarity, also end this loop
-                break;
             }
         }
 
@@ -544,9 +550,13 @@ public class FaqDataService {
                         }
                     }
                 }
+                if (bReplaced) {
+                    // only replace one
+                    break;
+                }
             }
             if (bReplaced) {
-                log.debug("q replaced on thread: {}, old q: {}, new q: {}", Thread.currentThread().getName(),
+                log.info("q replaced on thread: {}, old q: {}, new q: {}", Thread.currentThread().getName(),
                         oldQuestion, question);
             }
 
@@ -600,14 +610,12 @@ public class FaqDataService {
                 int simRatio = 10 - tfRatio;
                 simInfo = DF.format(sim) + " * " + simRatio + " & " + DF.format(tfidfSim) + " * " + tfRatio
                         + ", count: " + hitCount;
-                // final sim
-                // some sim very high, use that directly
-                boolean flag = (sim > excludeThreshold && tfidfSim > 0.1) || (tfidfSim > excludeThreshold && sim > 0.1);
-                if (flag) {
-                    log.debug("reach exlude threshold, sim: {}, tfidfSim: {}", sim, tfidfSim);
-                    sim = Math.max(sim, tfidfSim);
-                } else {
+                // final sim, if sim very high, use it directly, do not do ratio calculation
+                boolean flag = sim > excludeThreshold && tfidfSim > 0.1;
+                if (!flag) {
                     sim = (sim * simRatio + tfidfSim * tfRatio) / 10;
+                } else {
+                    log.debug("reach exclude threshold, sim: {}, tfidfSim: {}", sim, tfidfSim);
                 }
 
             } else {
