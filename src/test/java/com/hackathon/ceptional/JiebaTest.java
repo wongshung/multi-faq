@@ -5,6 +5,7 @@ import com.huaban.analysis.jieba.JiebaSegmenter.SegMode;
 import com.qianxinyao.analysis.jieba.keyword.Keyword;
 import com.qianxinyao.analysis.jieba.keyword.TFIDFAnalyzer;
 import org.junit.Assert;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
@@ -28,7 +29,7 @@ class JiebaTest {
         for(Keyword word:list)
             System.out.println(word.getName()+":"+word.getTfidfvalue()+",");
 
-        Assert.assertTrue(list.size() > 0);
+        Assertions.assertTrue(list.size() > 0);
     }
 
     @Test
@@ -41,6 +42,6 @@ class JiebaTest {
             System.out.println(wordSplit.process(sentence, SegMode.INDEX).toString());
         }
 
-        Assert.assertTrue(true);
+        Assertions.assertTrue(true);
     }
 }

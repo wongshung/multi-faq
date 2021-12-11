@@ -40,7 +40,7 @@ public class DataInitializer implements CommandLineRunner {
             File excelFile = new File(filePath);
             dataInitService.initData(excelFile);
         } catch (Exception ex) {
-            log.error("DataInitializer failed to init training excel file: {}", ex);
+            log.error("DataInitializer failed to init training excel file: {}", ex.getMessage());
         }
     }
 }

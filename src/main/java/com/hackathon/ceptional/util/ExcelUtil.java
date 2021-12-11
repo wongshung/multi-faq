@@ -1,20 +1,18 @@
 package com.hackathon.ceptional.util;
 
-import java.io.*;
-import java.text.DecimalFormat;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-
-import org.apache.poi.hssf.usermodel.HSSFCell;
-import org.apache.poi.hssf.usermodel.HSSFDateUtil;
-import org.apache.poi.hssf.usermodel.HSSFRow;
-import org.apache.poi.hssf.usermodel.HSSFSheet;
-import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import org.apache.poi.hssf.usermodel.*;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.xssf.usermodel.XSSFCell;
 import org.apache.poi.xssf.usermodel.XSSFRow;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+
+import java.io.*;
+import java.text.DecimalFormat;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * util for excel file handling
@@ -39,9 +37,11 @@ public class ExcelUtil {
      */
     private static DecimalFormat nf = new DecimalFormat("0.00");
 
-    public static ArrayList<ArrayList<Object>> readExcel(File file) {
+    public static final String XLSX = "xlsx";
+
+    public static List<ArrayList<Object>> readExcel(File file) throws FileNotFoundException {
         if (file == null) {
-            return null;
+            return Collections.emptyList();
         }
         if (file.getName().endsWith("xlsx")) {
             // 处理excel2007, default read first sheet
@@ -49,6 +49,19 @@ public class ExcelUtil {
         } else {
             // 处理excel2003, default first sheet
             return readExcel2003(file, 0);
+        }
+    }
+
+    public static List<ArrayList<Object>> readExcelFromInputStream(InputStream inputStream, String type) {
+        if (inputStream == null) {
+            return Collections.emptyList();
+        }
+        if (XLSX.equals(type)) {
+            // 处理excel2007, default read first sheet
+            return readExcel2007FromStream(inputStream, 0);
+        } else {
+            // 处理excel2003, default first sheet
+            return readExcel2003FromStream(inputStream, 0);
         }
     }
 
@@ -78,6 +91,14 @@ public class ExcelUtil {
         }
     }
 
+    private static XSSFWorkbook readXSSFWorkbookFromStream(InputStream inputStream) {
+        try {
+            return new XSSFWorkbook(inputStream);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /**
      * for excel 2003
      * @param file - excel file
@@ -91,15 +112,28 @@ public class ExcelUtil {
         }
     }
 
+    private static HSSFWorkbook readHSSFWorkbookFromStream(InputStream inputStream) {
+        try {
+            return new HSSFWorkbook(inputStream);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static ArrayList<ArrayList<Object>> readExcel2007(File file, int sheetIndex) throws FileNotFoundException {
+        FileInputStream fileInputStream = new FileInputStream(file);
+        return readExcel2007FromStream(fileInputStream, sheetIndex);
+    }
+
     /**
      * @return 将返回结果存储在ArrayList内，存储结构与二位数组类似
      * lists.get(0).get(0)表示过去Excel中0行0列单元格
      */
-    private static ArrayList<ArrayList<Object>> readExcel2007(File file, int sheetIndex) {
+    private static ArrayList<ArrayList<Object>> readExcel2007FromStream(InputStream inputStream, int sheetIndex) {
         try {
             ArrayList<ArrayList<Object>> rowList = new ArrayList<>();
             ArrayList<Object> colList;
-            XSSFWorkbook wb = new XSSFWorkbook(new FileInputStream(file));
+            XSSFWorkbook wb = new XSSFWorkbook(inputStream);
             XSSFSheet sheet = wb.getSheetAt(sheetIndex);
             XSSFRow row;
             XSSFCell cell;
@@ -137,11 +171,16 @@ public class ExcelUtil {
         }
     }
 
-    private static ArrayList<ArrayList<Object>> readExcel2003(File file, int sheetIndex) {
+    private static ArrayList<ArrayList<Object>> readExcel2003(File file, int sheetIndex) throws FileNotFoundException {
+        FileInputStream fileInputStream = new FileInputStream(file);
+        return readExcel2003FromStream(fileInputStream, sheetIndex);
+    }
+
+    private static ArrayList<ArrayList<Object>> readExcel2003FromStream(InputStream inputStream, int sheetIndex) {
         try {
             ArrayList<ArrayList<Object>> rowList = new ArrayList<>();
             ArrayList<Object> colList;
-            HSSFWorkbook wb = new HSSFWorkbook(new FileInputStream(file));
+            HSSFWorkbook wb = new HSSFWorkbook(inputStream);
             HSSFSheet sheet = wb.getSheetAt(sheetIndex);
             HSSFRow row;
             HSSFCell cell;

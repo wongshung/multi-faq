@@ -1,9 +1,8 @@
 package com.hackathon.ceptional;
 
-import cn.hutool.Hutool;
 import com.hackathon.ceptional.util.HuToolUtil;
 import com.hackathon.ceptional.util.SimilarityUtil;
-import org.junit.Assert;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
@@ -34,7 +33,7 @@ class SimilarityTest {
         double sim6 = SimilarityUtil.nGramSimilarity(text1, text2);
 
 
-        Assert.assertTrue(sim1 > 0);
+        Assertions.assertTrue(sim1 > 0);
     }
 
     @Test
@@ -56,7 +55,7 @@ class SimilarityTest {
         double ikSim = HuToolUtil.getSimilarity(v5, v6);
         double jiebaSim = HuToolUtil.getSimilarity(v7, v8);
 
-        Assert.assertTrue(rawSim > 0 && chineseSim > 0 && hanlpSim > 0 && ikSim > 0 && jiebaSim > 0);
+        Assertions.assertTrue(rawSim > 0 && chineseSim > 0 && hanlpSim > 0 && ikSim > 0 && jiebaSim > 0);
     }
 
     @Test
@@ -81,6 +80,6 @@ class SimilarityTest {
         Map<String, Integer> sortedMap = HuToolUtil.sortMapByValue(wordMap2, 0);
         sortedMap = HuToolUtil.subMap(sortedMap, 5);
 
-        Assert.assertTrue(sortedMap.size() > 0);
+        Assertions.assertTrue(sortedMap.size() > 0);
     }
 }
